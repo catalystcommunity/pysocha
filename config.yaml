@@ -1,0 +1,4 @@
+domain: example.com
+test: true
+previewDomain: localhost
+port: 4200
