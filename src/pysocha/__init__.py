@@ -1,12 +1,20 @@
 # -*- coding: utf-8 -*-
-import sys
+import typer
+from typing_extensions import Annotated
 
-def hello() -> str:
-    return "Hello from pysocha!"
+app = typer.Typer()
 
-def main():
-    if len(sys.argv) > 1:
-        print('Hello ' + sys.argv[1] + '!')
-        return
-    print('Hello World!')
+@app.command()
+def hello(name: Annotated[str, typer.Argument()] = 'World') -> str:
+    return "Hello {name}!"
+
+@app.command()
+def preview(config_file: Annotated[typer.FileText, typer.Option()] = './config.yaml'):
+    for line in config_file:
+        print(f"config line: {line}", end='')
+
+@app.command()
+def build(config_file: Annotated[typer.FileText, typer.Option()] = './config.yaml'):
+    for line in config_file:
+        print(f"config line: {line}", end='')
 
