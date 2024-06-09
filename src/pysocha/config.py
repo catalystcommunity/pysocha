@@ -27,7 +27,7 @@ blogConfig:
   authorPaginationNum: 10
 """
 
-CONFIG = yaml.load(default_yaml)
+CONFIG = yaml.load(default_yaml, Loader=yaml.Loader)
 
 def override_config(overrides: dict) -> dict:
     CONFIG.update(overrides)

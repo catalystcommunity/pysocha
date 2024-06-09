@@ -12,17 +12,25 @@ click==8.1.7
     # via typer
 jinja2==3.1.4
     # via pysocha
+linkify-it-py==2.0.3
+    # via pysocha
 markdown-it-py==3.0.0
+    # via mdit-py-plugins
     # via pysocha
     # via rich
 markupsafe==2.1.5
     # via jinja2
+mdit-py-plugins==0.4.1
+    # via pysocha
 mdurl==0.1.2
     # via markdown-it-py
 pygments==2.18.0
     # via rich
+python-frontmatter==1.1.0
+    # via pysocha
 pyyaml==6.0.1
     # via pysocha
+    # via python-frontmatter
 rich==13.7.1
     # via typer
 shellingham==1.5.4
@@ -31,3 +39,5 @@ typer==0.12.3
     # via pysocha
 typing-extensions==4.12.1
     # via typer
+uc-micro-py==1.0.3
+    # via linkify-it-py
