@@ -11,3 +11,5 @@ wheels/
 venv/
 env/
 
+# Specific to this project
+generated/
