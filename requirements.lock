@@ -21,6 +21,8 @@ mdurl==0.1.2
     # via markdown-it-py
 pygments==2.18.0
     # via rich
+pyyaml==6.0.1
+    # via pysocha
 rich==13.7.1
     # via typer
 shellingham==1.5.4
