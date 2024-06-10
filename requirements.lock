@@ -6,11 +6,20 @@
 #   features: []
 #   all-features: false
 #   with-sources: false
+#   generate-hashes: false
 
 -e file:.
+blinker==1.8.2
+    # via flask
 click==8.1.7
+    # via flask
     # via typer
+flask==3.0.3
+    # via pysocha
+itsdangerous==2.2.0
+    # via flask
 jinja2==3.1.4
+    # via flask
     # via pysocha
 linkify-it-py==2.0.3
     # via pysocha
@@ -20,6 +29,7 @@ markdown-it-py==3.0.0
     # via rich
 markupsafe==2.1.5
     # via jinja2
+    # via werkzeug
 mdit-py-plugins==0.4.1
     # via pysocha
 mdurl==0.1.2
@@ -41,3 +51,5 @@ typing-extensions==4.12.1
     # via typer
 uc-micro-py==1.0.3
     # via linkify-it-py
+werkzeug==3.0.3
+    # via flask

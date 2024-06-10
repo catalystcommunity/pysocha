@@ -5,6 +5,8 @@ from pprint import pprint
 from typing_extensions import Annotated
 from .config import override_config
 from .markdown import parseCommonMark
+from .preview import makePreviewServer
+from .build import buildSite
 
 mark = """---
 Title: Foo and Bar
@@ -27,14 +29,21 @@ def initialize(config_file: str):
 
 @app.command()
 def hello(name: Annotated[str, typer.Argument()] = 'World') -> str:
-    return "Hello {name}!"
+    print(f"Hello {name}!")
 
 @app.command()
 def preview(config_file: Annotated[typer.FileText, typer.Option()] = './config.yaml'):
-    print(override_config(config_file))
+    config = override_config(config_file)
+    server = makePreviewServer(config['outputDir'], config['startPage'])
+    buildSite(config)
+    server.config['SEND_FILE_MAX_AGE_DEFAULT'] = 5
+    server.run(host='0.0.0.0')
+
 
 @app.command()
 def build(config_file: Annotated[typer.FileText, typer.Option()] = './config.yaml'):
-    pprint(override_config(config_file))
-    pprint(parseCommonMark(mark))
+    config = override_config(config_file)
+    pprint(config)
+    pprint(parseCommonMark(mark)['markdown'])
+    buildSite(config)
 
