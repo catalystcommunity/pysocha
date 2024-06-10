@@ -13,3 +13,4 @@ env/
 
 # Specific to this project
 generated/
+scratch.py
