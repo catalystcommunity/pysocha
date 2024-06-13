@@ -1,0 +1,31 @@
+# All of these have defaults, too, these are the bare minimum
+contentDir: "content" # Where content should be found
+outputDir: "generated" # Where the output should be put, wiping it every time we start
+templatesDir: "templates" # Where the templates are
+siteTitle: "Example dot Com!" # The title of the site
+descending: True # Whether to sort post times in descending order, default true with newest content first
+defaultExtension: ".html" # If you prefer to use .foo or something for your server, here you go
+startPage: "index.html" # make sure the extension matches the defaultExtension
+
+# These keys are used for general files, like the index page, but you can add more
+# and they will be passed to templates as named variables
+pageConfig: # Where things start for pages, but note you could override these in the frontmatter of a page
+  pageTitle: "Example dot Com!" # The title of the page
+  pageDefaultTemplate: "page.jinja2"
+
+# These keys are used for blog posts and listings, but you can add more
+# and they will be passed to templates as named variables
+blogConfig: # The Blog requires more config, but again you can override many of these in the frontmatter of a post
+  title: "Example blog"
+  blogBaseDir: "theblog" # The url path to the blog
+  blogTemplate: "blog.jinja2"
+  listingTemplate: "listing.jinja2"
+  listingPaginationNum: 5 # How many posts per listing page
+  listingKeysNeeded: ['hook'] # If you have extra logic in your listing template, you can require extra in your posts
+  atomFeeds: True # Generate atom feeds for the blog and each tag
+  tagsTemplate: "tags.jinja2" # List all tags
+  tagTemplate: "tag.jinja2" # Each tag also gets a listing of its own
+  tagPaginationNum: 5 # How many posts per tag page
+  authorsTemplate: "authors.jinja2" # All authors
+  authorTemplate: "author.jinja2" # Each author gets a listing of their own
+  authorPaginationNum: 10 # How many posts per author page

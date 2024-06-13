@@ -11,7 +11,7 @@ def _initialize(options: dict = None):
     MD = (
         MarkdownIt("commonmark", options)
         .use(front_matter_plugin)
-        .enable(['table', 'linkify'])
+        .enable(['table', 'linkify', 'replacements'])
     )
 
 def parseCommonMark(markdown: str, options: dict = None):
