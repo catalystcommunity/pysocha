@@ -12,8 +12,8 @@ pageConfig:
   pageTitle: "Example dot Com!"
   pageDefaultTemplate: "page.jinja2"
 blogConfig: 
-  title: "Tod and Lorna blog"
-  blogBaseDir: "tnlblog"
+  title: "Example blog"
+  blogBaseDir: "blog"
   blogTemplate: "blog.jinja2"
   listingTemplate: "listing.jinja2"
   listingPagination_num: 5
