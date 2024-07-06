@@ -1,3 +1,4 @@
+from datetime import timezone
 import dateutil.parser
 import jinja2
 import math
@@ -7,7 +8,9 @@ import shutil
 
 from slugify import slugify
 
-from .markdown import parseCommonMark
+from pysocha.atom import ATOM_ENTRY, ATOM_FEED_ELEMENTS, ATOM_FOOTER, ATOM_HEADER
+
+from pysocha.markdown import parseCommonMark
 
 
 def get_markdown_files(directory):
@@ -41,7 +44,7 @@ def generate_blog_posts(config: dict):
             file = f.read()
             mark = parseCommonMark(file)
         post_data = mark['frontmatter']
-        post_data['PostedDate'] = dateutil.parser.parse(post_data['PostedDate'])
+        post_data['PostedDate'] = dateutil.parser.parse(post_data['PostedDate']).replace(tzinfo=timezone.utc)
         post_template = template
         # If we override the template for that page, here it gets invoked
         if 'Template' in mark['frontmatter']:
@@ -136,9 +139,12 @@ def generate_blog_posts(config: dict):
                                              'total_pages': total_pages}))
 
     output_filename = os.path.join(output_dir, 'authors' + file_ext)
+    first_author = None
     with open(output_filename, 'w+') as f:
         f.write(authors_template.render({'authors': authors, 'title': 'Authors', 'all_posts': sorted_posts}))
     for author, posts in authors.items():
+        if first_author is None:
+            first_author = author
         if 'authorPaginationNum' in blog_config:
             page_limit = blog_config['authorPaginationNum']
             total_pages = int(math.floor(len(posts) / page_limit) + 1)
@@ -163,6 +169,33 @@ def generate_blog_posts(config: dict):
                                                 'all_posts': sorted_posts,
                                                 'title': 'Posts for author: ' + author,
                                                 'posts': posts}))
+
+    sorted_posts.sort(key=lambda post: post['PostedDate'], reverse=True)
+    if blog_config['atomFeeds']:
+        atom_feed = ""
+        atom_feed += ATOM_HEADER
+        atom_elements = {
+            'siteTitle': config['siteTitle'],
+            'siteAddress': config['siteAddress'],
+            'author': first_author,
+            'updatedDate': sorted_posts[0]['PostedDate'].isoformat(),
+        }
+        atom_feed += ATOM_FEED_ELEMENTS.format(**atom_elements)
+        for post in sorted_posts:
+            entry = {
+                'Title': post['Title'],
+                'siteAddress': config['siteAddress'],
+                'blogBaseDir': blog_config['blogBaseDir'],
+                'slugify': post['slugify'],
+                'updatedDate': post['PostedDate'].isoformat(),
+                'hook': post.get('hook', post.get('summary', post['Title'])),
+                'authorName': post['Author'],
+            }
+            atom_feed += ATOM_ENTRY.format(**entry)
+        atom_feed += ATOM_FOOTER
+        output_filename = os.path.join(config['outputDir'], blog_config['blogBaseDir'], 'atom.xml')
+        with open(output_filename, 'w+') as f:
+            f.write(atom_feed)
 
 def generate_pages(config: dict):
     """
