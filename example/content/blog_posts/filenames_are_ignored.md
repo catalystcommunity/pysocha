@@ -1,6 +1,7 @@
 ---
 # These are all optional
 Author: 'Not Tod'
+AuthorEmail: 'not-tod@example.com'
 Tags: ['testing', 'generated', 'fourth']
 # These are not optional at all
 PostedDate: 'Sun Sep 28 10:36:28 MST 2003'

@@ -89,6 +89,7 @@ def build_rss_feed(site_title: str, site_address: str, blog_base_dir: str, posts
         ElementTree.SubElement(item, "guid", {"isPermaLink": "true"}).text = post_url
         ElementTree.SubElement(item, "pubDate").text = _rss_datetime(post["PostedDate"])
         ElementTree.SubElement(item, "description").text = post.get("hook", post.get("summary", post["Title"]))
+        ElementTree.SubElement(item, "author").text = post["AuthorEmail"]
 
     return ElementTree.tostring(rss, encoding="unicode", xml_declaration=True)
 

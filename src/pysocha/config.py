@@ -1,3 +1,4 @@
+import copy
 import yaml
 
 default_yaml = """
@@ -26,6 +27,7 @@ blogConfig:
   listingPagination_num: 5
   listingKeysNeeded: ['hook']
   atomFeeds: True
+  disableRSS: False
   tagsTemplate: "tags.jinja2"
   tagTemplate: "tag.jinja2"
   tagPaginationNum: 5
@@ -34,8 +36,18 @@ blogConfig:
   authorPaginationNum: 10
 """
 
-CONFIG = yaml.load(default_yaml, Loader=yaml.Loader)
+CONFIG = yaml.safe_load(default_yaml)
+
+
+def _deep_merge(defaults: dict, overrides: dict) -> dict:
+    merged = copy.deepcopy(defaults)
+    for key, value in (overrides or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
 
 def override_config(overrides: dict) -> dict:
-    CONFIG.update(overrides)
-    return CONFIG
+    return _deep_merge(CONFIG, overrides)

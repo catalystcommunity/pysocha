@@ -28,7 +28,8 @@ blogConfig: # The Blog requires more config, but again you can override many of 
   listingTemplate: "listing.jinja2"
   listingPaginationNum: 5 # How many posts per listing page
   listingKeysNeeded: ['hook'] # If you have extra logic in your listing template, you can require extra in your posts
-  atomFeeds: True # Generate Atom and RSS feeds for the blog
+  atomFeeds: True # Generate Atom feeds and RSS feeds when posts include AuthorEmail
+  disableRSS: False # Set true to skip RSS even when AuthorEmail is present
   tagsTemplate: "tags.jinja2" # List all tags
   tagTemplate: "tag.jinja2" # Each tag also gets a listing of its own
   tagPaginationNum: 5 # How many posts per tag page
