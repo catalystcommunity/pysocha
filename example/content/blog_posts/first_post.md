@@ -1,5 +1,6 @@
 ---
 Author: 'Tod Hansmann'
+AuthorEmail: 'tod@example.com'
 Tags: ['first', 'testing', 'generated']
 NeverUsed: 'This is never actually used, but I can throw it in for later use if I want'
 PostedDate: 'Thu Sep 25 10:36:28 MST 2003'

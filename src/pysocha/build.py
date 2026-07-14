@@ -33,7 +33,7 @@ def get_markdown_files(directory):
             files.append(file)
     return files
 
-def generate_blog_posts(config: dict):
+def generate_blog_posts(config: dict, verbose: bool = False):
     """
     We go through all blog posts and their related optional outputs like tags or authors, depending on config
     """
@@ -88,6 +88,8 @@ def generate_blog_posts(config: dict):
     # We'll need to make all the blog posts
     for blog_post in sorted_posts:
         output_filename = os.path.join(output_dir, blog_post['slugify'])
+        if verbose:
+            print(output_filename)
         with open(output_filename, 'w+') as f:
             f.write(blog_post['rendered'])
 
@@ -120,6 +122,8 @@ def generate_blog_posts(config: dict):
         file_num = str(page_num) + file_ext
         offset = (page_num - 1) * page_limit
         output_filename = os.path.join(output_dir, 'listing' + file_num)
+        if verbose:
+            print(output_filename)
         with open(output_filename, 'w+') as f:
             f.write(listing_template.render({'posts': listings[offset:offset+page_limit],
                                              'all_posts': sorted_posts,
@@ -128,6 +132,8 @@ def generate_blog_posts(config: dict):
                                              'total_pages': total_pages}))
 
     output_filename = os.path.join(output_dir, 'tags' + file_ext)
+    if verbose:
+        print(output_filename)
     with open(output_filename, 'w+') as f:
         f.write(tags_template.render({'tags': tags, 'title': 'Tags', 'all_posts': sorted_posts}))
     for tag, posts in tags.items():
@@ -139,6 +145,8 @@ def generate_blog_posts(config: dict):
             offset = (page_num - 1) * page_limit
             tag_file = 'tag_' + tag.replace(' ', '_')
             output_filename = os.path.join(output_dir, tag_file + file_num)
+            if verbose:
+                print(output_filename)
             with open(output_filename, 'w+') as f:
                 f.write(tag_template.render({'posts': posts[offset:offset+page_limit],
                                              'all_posts': sorted_posts,
@@ -150,6 +158,8 @@ def generate_blog_posts(config: dict):
 
     output_filename = os.path.join(output_dir, 'authors' + file_ext)
     first_author = None
+    if verbose:
+        print(output_filename)
     with open(output_filename, 'w+') as f:
         f.write(authors_template.render({'authors': authors, 'title': 'Authors', 'all_posts': sorted_posts}))
     for author, posts in authors.items():
@@ -164,6 +174,8 @@ def generate_blog_posts(config: dict):
                 offset = (page_num - 1) * page_limit
                 author_file = 'author_' + author.replace(' ', '_')
                 output_filename = os.path.join(output_dir, author_file + file_num)
+                if verbose:
+                    print(output_filename)
                 with open(output_filename, 'w+') as f:
                     f.write(author_template.render({'author': author,
                                                     'author_file': author_file,
@@ -174,6 +186,8 @@ def generate_blog_posts(config: dict):
                                                     'total_pages': total_pages}))
         else:
             output_filename = os.path.join(output_dir, 'author_' + author.replace(' ', '_') + file_ext)
+            if verbose:
+                print(output_filename)
             with open(output_filename, 'w+') as f:
                 f.write(author_template.render({'author': author,
                                                 'all_posts': sorted_posts,
@@ -194,20 +208,25 @@ def generate_blog_posts(config: dict):
         )
         validate_atom_feed(atom_feed)
         output_filename = os.path.join(config['outputDir'], blog_config['blogBaseDir'], 'atom.xml')
+        if verbose:
+            print(output_filename)
         with open(output_filename, 'w+') as f:
             f.write(atom_feed)
-        rss_feed = build_rss_feed(
-            config['siteTitle'],
-            config['siteAddress'],
-            blog_config['blogBaseDir'],
-            sorted_posts,
-        )
-        validate_rss_feed(rss_feed)
-        output_filename = os.path.join(config['outputDir'], blog_config['blogBaseDir'], 'rss.xml')
-        with open(output_filename, 'w+') as f:
-            f.write(rss_feed)
+        if not blog_config.get('disableRSS', False) and all(post.get('AuthorEmail') for post in sorted_posts):
+            rss_feed = build_rss_feed(
+                config['siteTitle'],
+                config['siteAddress'],
+                blog_config['blogBaseDir'],
+                sorted_posts,
+            )
+            validate_rss_feed(rss_feed)
+            output_filename = os.path.join(config['outputDir'], blog_config['blogBaseDir'], 'rss.xml')
+            if verbose:
+                print(output_filename)
+            with open(output_filename, 'w+') as f:
+                f.write(rss_feed)
 
-def generate_pages(config: dict):
+def generate_pages(config: dict, verbose: bool = False):
     """
     We go through all the possibilities for generating any page related details
     """
@@ -232,7 +251,8 @@ def generate_pages(config: dict):
         file_ext = mark['frontmatter'].get('Extension', config['defaultExtension'])
         pages[page]['slugify'] = page.rstrip('.md')
         output_filename = os.path.join(outputDir + '/' + pages[page]['slugify'] + file_ext)
-        print(output_filename)
+        if verbose:
+            print(output_filename)
         # This will give all frontmatter and the content to the jinja template
         context = mark['frontmatter']
         context['content'] = mark['markdown']
@@ -275,7 +295,7 @@ def build_posts_replacement_map(config: dict) -> dict:
         replacements[page] = config['blogConfig']['blogBaseDir'] + '/' + slugify(mark['frontmatter']['Title']) + config['defaultExtension']
     return replacements
 
-def buildSite(config: dict):
+def buildSite(config: dict, verbose: bool = False):
     if os.path.exists(config['outputDir']):
         shutil.rmtree(config['outputDir'])
         os.makedirs(config['outputDir'])
@@ -290,6 +310,6 @@ def buildSite(config: dict):
         print('Overlappng names: ', pages_map.keys() & posts_map.keys())
         exit(1)
     generate_extras(config)
-    generate_pages(config)
-    generate_blog_posts(config)
+    generate_pages(config, verbose=verbose)
+    generate_blog_posts(config, verbose=verbose)
     return

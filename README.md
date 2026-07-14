@@ -61,6 +61,12 @@ Build the site:
 pysocha build --config-file config.yaml
 ```
 
+Show generated file paths while building:
+
+```bash
+pysocha build --config-file config.yaml --verbose
+```
+
 Preview the generated site locally:
 
 ```bash
@@ -70,15 +76,46 @@ pysocha preview --config-file config.yaml
 The generated files are written to `outputDir` from your config. Extra files are
 copied from `content/extra_files` into that output directory.
 
+## Blog Frontmatter
+
+Blog posts are Markdown files in `content/blog_posts`. Required fields:
+
+```yaml
+---
+Title: "Post title"
+PostedDate: "2026-07-14T10:00:00-06:00"
+Author: "Author Name"
+AuthorEmail: "author@example.com"
+---
+```
+
+`AuthorEmail` is required for RSS output. Atom uses `Author` for display names.
+
+Optional fields:
+
+- `Tags`: list of tags for tag pages
+- `Unlisted`: set to `true` to keep a post out of listings and feeds
+- `hook` or `summary`: feed summary text
+- `Template`: per-post template override
+- `Extension`: per-post output extension override
+
 ## Feeds
 
-When `blogConfig.atomFeeds` is true, Pysocha generates both feed formats for
-listed blog posts:
+When `blogConfig.atomFeeds` is true, Pysocha generates feeds for listed blog
+posts:
 
 - `atom.xml`
 - `rss.xml`
 
-The name is kept as `atomFeeds` for compatibility with existing configs.
+RSS is generated only when `disableRSS` is not true and every listed post has
+`AuthorEmail` in frontmatter. The `atomFeeds` name is kept for compatibility
+with existing configs.
+
+```yaml
+blogConfig:
+  atomFeeds: True
+  disableRSS: False
+```
 
 ## Syntax highlighting
 
