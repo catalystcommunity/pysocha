@@ -9,6 +9,12 @@ siteAddress: "https://example.changeme.tld/"
 descending: True
 defaultExtension: ".html"
 startPage: "index.html"
+markdown:
+  syntaxHighlighting:
+    enabled: True
+    style: "catppuccin-mocha"
+    cssClass: "highlight"
+    noclasses: True
 pageConfig: 
   pageTitle: "Example dot Com!"
   pageDefaultTemplate: "page.jinja2"
@@ -33,4 +39,3 @@ CONFIG = yaml.load(default_yaml, Loader=yaml.Loader)
 def override_config(overrides: dict) -> dict:
     CONFIG.update(overrides)
     return CONFIG
-

@@ -8,9 +8,19 @@ import shutil
 
 from slugify import slugify
 
-from pysocha.atom import ATOM_ENTRY, ATOM_FEED_ELEMENTS, ATOM_FOOTER, ATOM_HEADER
-
+from pysocha.atom import build_atom_feed, build_rss_feed, validate_atom_feed, validate_rss_feed
 from pysocha.markdown import parseCommonMark
+
+
+def _markdown_options(config: dict) -> dict:
+    return config.get('markdown', {})
+
+
+def _parse_post_date(value):
+    posted_date = dateutil.parser.parse(value)
+    if posted_date.tzinfo is None:
+        return posted_date.replace(tzinfo=timezone.utc)
+    return posted_date.astimezone(timezone.utc)
 
 
 def get_markdown_files(directory):
@@ -42,9 +52,9 @@ def generate_blog_posts(config: dict):
     for post in get_markdown_files(posts_dir):
         with open(os.path.join(posts_dir, post), 'r') as f:
             file = f.read()
-            mark = parseCommonMark(file)
+            mark = parseCommonMark(file, _markdown_options(config))
         post_data = mark['frontmatter']
-        post_data['PostedDate'] = dateutil.parser.parse(post_data['PostedDate']).replace(tzinfo=timezone.utc)
+        post_data['PostedDate'] = _parse_post_date(post_data['PostedDate'])
         post_template = template
         # If we override the template for that page, here it gets invoked
         if 'Template' in mark['frontmatter']:
@@ -172,30 +182,30 @@ def generate_blog_posts(config: dict):
 
     sorted_posts.sort(key=lambda post: post['PostedDate'], reverse=True)
     if blog_config['atomFeeds']:
-        atom_feed = ""
-        atom_feed += ATOM_HEADER
-        atom_elements = {
-            'siteTitle': config['siteTitle'],
-            'siteAddress': config['siteAddress'],
-            'author': first_author,
-            'updatedDate': sorted_posts[0]['PostedDate'].isoformat(),
-        }
-        atom_feed += ATOM_FEED_ELEMENTS.format(**atom_elements)
-        for post in sorted_posts:
-            entry = {
-                'Title': post['Title'],
-                'siteAddress': config['siteAddress'],
-                'blogBaseDir': blog_config['blogBaseDir'],
-                'slugify': post['slugify'],
-                'updatedDate': post['PostedDate'].isoformat(),
-                'hook': post.get('hook', post.get('summary', post['Title'])),
-                'authorName': post['Author'],
-            }
-            atom_feed += ATOM_ENTRY.format(**entry)
-        atom_feed += ATOM_FOOTER
+        feed_author = first_author
+        if feed_author is None and sorted_posts:
+            feed_author = sorted_posts[0].get('Author')
+        atom_feed = build_atom_feed(
+            config['siteTitle'],
+            config['siteAddress'],
+            blog_config['blogBaseDir'],
+            sorted_posts,
+            feed_author,
+        )
+        validate_atom_feed(atom_feed)
         output_filename = os.path.join(config['outputDir'], blog_config['blogBaseDir'], 'atom.xml')
         with open(output_filename, 'w+') as f:
             f.write(atom_feed)
+        rss_feed = build_rss_feed(
+            config['siteTitle'],
+            config['siteAddress'],
+            blog_config['blogBaseDir'],
+            sorted_posts,
+        )
+        validate_rss_feed(rss_feed)
+        output_filename = os.path.join(config['outputDir'], blog_config['blogBaseDir'], 'rss.xml')
+        with open(output_filename, 'w+') as f:
+            f.write(rss_feed)
 
 def generate_pages(config: dict):
     """
@@ -213,7 +223,7 @@ def generate_pages(config: dict):
         pages[page] = {}
         with open(os.path.join(pages_dir, page), 'r') as f:
             file = f.read()
-            mark = parseCommonMark(file)
+            mark = parseCommonMark(file, _markdown_options(config))
         page_template = template
         # If we override the template for that page, here it gets invoked
         if 'Template' in mark['frontmatter']:
@@ -261,7 +271,7 @@ def build_posts_replacement_map(config: dict) -> dict:
     for page in get_markdown_files(pages_dir):
         with open(os.path.join(pages_dir, page), 'r') as f:
             file = f.read()
-            mark = parseCommonMark(file)
+            mark = parseCommonMark(file, _markdown_options(config))
         replacements[page] = config['blogConfig']['blogBaseDir'] + '/' + slugify(mark['frontmatter']['Title']) + config['defaultExtension']
     return replacements
 

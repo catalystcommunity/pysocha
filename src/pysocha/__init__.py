@@ -26,6 +26,11 @@ This is some stuff *bold* or not.
 
 app = typer.Typer()
 
+
+def main():
+    app()
+
+
 def initialize(config_file: str):
     return override_config(yaml.load(config_file, Loader=Loader))
 
@@ -49,4 +54,3 @@ def build(config_file: Annotated[typer.FileText, typer.Option('--config-file', '
     pprint(config)
     pprint(parseCommonMark(mark)['markdown'])
     buildSite(config)
-
