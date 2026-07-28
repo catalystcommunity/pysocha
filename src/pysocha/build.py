@@ -1,3 +1,4 @@
+import copy
 from datetime import timezone
 import dateutil.parser
 import jinja2
@@ -5,6 +6,9 @@ import math
 import os
 import re
 import shutil
+import stat
+import tempfile
+import uuid
 
 from slugify import slugify
 
@@ -12,8 +16,27 @@ from pysocha.atom import build_atom_feed, build_rss_feed, validate_atom_feed, va
 from pysocha.markdown import parseCommonMark
 
 
+class ContentBuildError(RuntimeError):
+    pass
+
+
 def _markdown_options(config: dict) -> dict:
     return config.get('markdown', {})
+
+
+def _display_output_path(config: dict, output_filename: str) -> str:
+    staged_root = os.path.abspath(config['outputDir'])
+    relative_path = os.path.relpath(os.path.abspath(output_filename), staged_root)
+    return os.path.join(config.get('_displayOutputDir', config['outputDir']), relative_path)
+
+
+def _render_template(template, context: dict, source_path: str) -> str:
+    try:
+        return template.render(context)
+    except jinja2.UndefinedError as error:
+        raise ContentBuildError(
+            f"{source_path}: failed to render {template.name}: {error}"
+        ) from error
 
 
 def _parse_post_date(value):
@@ -41,7 +64,9 @@ def generate_blog_posts(config: dict, verbose: bool = False):
     templateDir = config['templatesDir']
     templateLoader = jinja2.FileSystemLoader(searchpath=templateDir)
     templateEnv = jinja2.Environment( loader=templateLoader )
+    strictTemplateEnv = templateEnv.overlay(undefined=jinja2.StrictUndefined)
     template = templateEnv.get_template(config['blogConfig']['blogTemplate'])
+    strict_template = strictTemplateEnv.get_template(config['blogConfig']['blogTemplate'])
     outputDir = os.path.join(os.getcwd(), config['outputDir'])
 
     posts = {}
@@ -50,22 +75,26 @@ def generate_blog_posts(config: dict, verbose: bool = False):
     
     # First we need to get all the content and frontmatter into posts for later
     for post in get_markdown_files(posts_dir):
-        with open(os.path.join(posts_dir, post), 'r') as f:
+        source_path = os.path.join(posts_dir, post)
+        with open(source_path, 'r') as f:
             file = f.read()
-            mark = parseCommonMark(file, _markdown_options(config))
+            mark = parseCommonMark(file, _markdown_options(config), source=source_path)
         post_data = mark['frontmatter']
         post_data['PostedDate'] = _parse_post_date(post_data['PostedDate'])
-        post_template = template
+        post_template = strict_template if 'content_regions' in mark else template
         # If we override the template for that page, here it gets invoked
         if 'Template' in mark['frontmatter']:
-            post_template = templateEnv.get_template(mark['frontmatter']['Template'])
+            environment = strictTemplateEnv if 'content_regions' in mark else templateEnv
+            post_template = environment.get_template(mark['frontmatter']['Template'])
         # Same with file extension, which opens some nice scripting possibilities
         file_ext = mark['frontmatter'].get('Extension', config['defaultExtension'])
         post_data['slugify'] = slugify(mark['frontmatter']['Title']) + file_ext
         output_filename = os.path.join(outputDir + '/' + config['blogConfig']['blogBaseDir'] + '/' + post_data['slugify'])
         # This will give all frontmatter and the content to the jinja template
         post_data['content'] = mark['markdown']
-        post_data['rendered'] = post_template.render(post_data)
+        if 'content_regions' in mark:
+            post_data['content_regions'] = mark['content_regions']
+        post_data['rendered'] = _render_template(post_template, post_data, source_path)
         post_data['rendered'] = config['_pattern'].sub(lambda m: config['_replacements'][m.group(0)], post_data['rendered'])
         posts[post] = post_data
         if post_data.get('Unlisted') is None:
@@ -89,7 +118,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
     for blog_post in sorted_posts:
         output_filename = os.path.join(output_dir, blog_post['slugify'])
         if verbose:
-            print(output_filename)
+            print(_display_output_path(config, output_filename))
         with open(output_filename, 'w+') as f:
             f.write(blog_post['rendered'])
 
@@ -123,7 +152,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
         offset = (page_num - 1) * page_limit
         output_filename = os.path.join(output_dir, 'listing' + file_num)
         if verbose:
-            print(output_filename)
+            print(_display_output_path(config, output_filename))
         with open(output_filename, 'w+') as f:
             f.write(listing_template.render({'posts': listings[offset:offset+page_limit],
                                              'all_posts': sorted_posts,
@@ -133,7 +162,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
 
     output_filename = os.path.join(output_dir, 'tags' + file_ext)
     if verbose:
-        print(output_filename)
+        print(_display_output_path(config, output_filename))
     with open(output_filename, 'w+') as f:
         f.write(tags_template.render({'tags': tags, 'title': 'Tags', 'all_posts': sorted_posts}))
     for tag, posts in tags.items():
@@ -146,7 +175,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
             tag_file = 'tag_' + tag.replace(' ', '_')
             output_filename = os.path.join(output_dir, tag_file + file_num)
             if verbose:
-                print(output_filename)
+                print(_display_output_path(config, output_filename))
             with open(output_filename, 'w+') as f:
                 f.write(tag_template.render({'posts': posts[offset:offset+page_limit],
                                              'all_posts': sorted_posts,
@@ -159,7 +188,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
     output_filename = os.path.join(output_dir, 'authors' + file_ext)
     first_author = None
     if verbose:
-        print(output_filename)
+        print(_display_output_path(config, output_filename))
     with open(output_filename, 'w+') as f:
         f.write(authors_template.render({'authors': authors, 'title': 'Authors', 'all_posts': sorted_posts}))
     for author, posts in authors.items():
@@ -175,7 +204,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
                 author_file = 'author_' + author.replace(' ', '_')
                 output_filename = os.path.join(output_dir, author_file + file_num)
                 if verbose:
-                    print(output_filename)
+                    print(_display_output_path(config, output_filename))
                 with open(output_filename, 'w+') as f:
                     f.write(author_template.render({'author': author,
                                                     'author_file': author_file,
@@ -187,7 +216,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
         else:
             output_filename = os.path.join(output_dir, 'author_' + author.replace(' ', '_') + file_ext)
             if verbose:
-                print(output_filename)
+                print(_display_output_path(config, output_filename))
             with open(output_filename, 'w+') as f:
                 f.write(author_template.render({'author': author,
                                                 'all_posts': sorted_posts,
@@ -209,7 +238,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
         validate_atom_feed(atom_feed)
         output_filename = os.path.join(config['outputDir'], blog_config['blogBaseDir'], 'atom.xml')
         if verbose:
-            print(output_filename)
+            print(_display_output_path(config, output_filename))
         with open(output_filename, 'w+') as f:
             f.write(atom_feed)
         if not blog_config.get('disableRSS', False) and all(post.get('AuthorEmail') for post in sorted_posts):
@@ -222,7 +251,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
             validate_rss_feed(rss_feed)
             output_filename = os.path.join(config['outputDir'], blog_config['blogBaseDir'], 'rss.xml')
             if verbose:
-                print(output_filename)
+                print(_display_output_path(config, output_filename))
             with open(output_filename, 'w+') as f:
                 f.write(rss_feed)
 
@@ -233,31 +262,37 @@ def generate_pages(config: dict, verbose: bool = False):
     templateDir = config['templatesDir']
     templateLoader = jinja2.FileSystemLoader(searchpath=templateDir)
     templateEnv = jinja2.Environment( loader=templateLoader )
+    strictTemplateEnv = templateEnv.overlay(undefined=jinja2.StrictUndefined)
     template = templateEnv.get_template(config['pageConfig']['pageDefaultTemplate'])
+    strict_template = strictTemplateEnv.get_template(config['pageConfig']['pageDefaultTemplate'])
     outputDir = os.path.join(os.getcwd(), config['outputDir'])
 
     pages = {}
     pages_dir = os.path.join(config['contentDir'], 'pages')
     for page in get_markdown_files(pages_dir):
         pages[page] = {}
-        with open(os.path.join(pages_dir, page), 'r') as f:
+        source_path = os.path.join(pages_dir, page)
+        with open(source_path, 'r') as f:
             file = f.read()
-            mark = parseCommonMark(file, _markdown_options(config))
-        page_template = template
+            mark = parseCommonMark(file, _markdown_options(config), source=source_path)
+        page_template = strict_template if 'content_regions' in mark else template
         # If we override the template for that page, here it gets invoked
         if 'Template' in mark['frontmatter']:
-            page_template = templateEnv.get_template(mark['frontmatter']['Template'])
+            environment = strictTemplateEnv if 'content_regions' in mark else templateEnv
+            page_template = environment.get_template(mark['frontmatter']['Template'])
         # Same with file extension, which opens some nice scripting possibilities
         file_ext = mark['frontmatter'].get('Extension', config['defaultExtension'])
         pages[page]['slugify'] = page.rstrip('.md')
         output_filename = os.path.join(outputDir + '/' + pages[page]['slugify'] + file_ext)
         if verbose:
-            print(output_filename)
+            print(_display_output_path(config, output_filename))
         # This will give all frontmatter and the content to the jinja template
         context = mark['frontmatter']
         context['content'] = mark['markdown']
+        if 'content_regions' in mark:
+            context['content_regions'] = mark['content_regions']
         with open(output_filename, 'w+') as f:
-            foo = page_template.render(context)
+            foo = _render_template(page_template, context, source_path)
             foo = config['_pattern'].sub(lambda m: config['_replacements'][m.group(0)], foo)
             f.write(foo)
 
@@ -289,27 +324,74 @@ def build_posts_replacement_map(config: dict) -> dict:
     # but that's a mistake anyway, as we should be using the default extension and know what we're linking to
     replacements = {}
     for page in get_markdown_files(pages_dir):
-        with open(os.path.join(pages_dir, page), 'r') as f:
+        source_path = os.path.join(pages_dir, page)
+        with open(source_path, 'r') as f:
             file = f.read()
-            mark = parseCommonMark(file, _markdown_options(config))
+            mark = parseCommonMark(file, _markdown_options(config), source=source_path)
         replacements[page] = config['blogConfig']['blogBaseDir'] + '/' + slugify(mark['frontmatter']['Title']) + config['defaultExtension']
     return replacements
 
+def _publish_staged_output(staged_output: str, output_dir: str):
+    parent = os.path.dirname(output_dir)
+    backup = None
+    if os.path.exists(output_dir):
+        backup = os.path.join(
+            parent,
+            f".{os.path.basename(output_dir)}.pysocha-backup-{uuid.uuid4().hex}",
+        )
+        os.replace(output_dir, backup)
+
+    try:
+        os.replace(staged_output, output_dir)
+    except Exception:
+        if backup is not None and not os.path.exists(output_dir):
+            os.replace(backup, output_dir)
+        raise
+    else:
+        if backup is not None:
+            shutil.rmtree(backup)
+
+
 def buildSite(config: dict, verbose: bool = False):
-    if os.path.exists(config['outputDir']):
-        shutil.rmtree(config['outputDir'])
-        os.makedirs(config['outputDir'])
-    pages_map = build_pages_replacement_map(config)
-    posts_map = build_posts_replacement_map(config)
-    # Now that we have the maps, we can build the replacements and the pattern for regex on all files
-    config['_replacements'] = {**pages_map, **posts_map}
-    rep = dict((re.escape(k), v) for k, v in config['_replacements'].items())
-    config['_pattern'] = re.compile("|".join(rep.keys()))
-    if len(config['_replacements'].keys()) > len(pages_map.keys()) + len(posts_map.keys()):
-        print('Pages and Posts have overlapping names. Please fix this.')
-        print('Overlappng names: ', pages_map.keys() & posts_map.keys())
-        exit(1)
-    generate_extras(config)
-    generate_pages(config, verbose=verbose)
-    generate_blog_posts(config, verbose=verbose)
+    output_dir = os.path.abspath(config['outputDir'])
+    working_dir = os.path.abspath(os.getcwd())
+    if output_dir in {os.path.abspath(os.sep), working_dir}:
+        raise ValueError("outputDir must not be the filesystem root or the working directory")
+
+    output_mode = (
+        stat.S_IMODE(os.stat(output_dir).st_mode)
+        if os.path.isdir(output_dir)
+        else 0o755
+    )
+    output_parent = os.path.dirname(output_dir)
+    os.makedirs(output_parent, exist_ok=True)
+    staged_output = tempfile.mkdtemp(
+        prefix=f".{os.path.basename(output_dir)}.pysocha-build-",
+        dir=output_parent,
+    )
+    build_config = copy.deepcopy(config)
+    build_config['outputDir'] = staged_output
+    build_config['_displayOutputDir'] = config['outputDir']
+
+    try:
+        pages_map = build_pages_replacement_map(build_config)
+        posts_map = build_posts_replacement_map(build_config)
+        overlapping_names = sorted(pages_map.keys() & posts_map.keys())
+        if overlapping_names:
+            names = ", ".join(overlapping_names)
+            raise ContentBuildError(
+                f"pages and blog posts have overlapping source names: {names}"
+            )
+        # Now that we have the maps, we can build the replacements and the pattern for regex on all files
+        build_config['_replacements'] = {**pages_map, **posts_map}
+        rep = dict((re.escape(k), v) for k, v in build_config['_replacements'].items())
+        build_config['_pattern'] = re.compile("|".join(rep.keys()))
+        generate_extras(build_config)
+        generate_pages(build_config, verbose=verbose)
+        generate_blog_posts(build_config, verbose=verbose)
+        os.chmod(staged_output, output_mode)
+        _publish_staged_output(staged_output, output_dir)
+    finally:
+        if os.path.exists(staged_output):
+            shutil.rmtree(staged_output)
     return
