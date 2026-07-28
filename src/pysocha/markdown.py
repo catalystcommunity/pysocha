@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import frontmatter
 from html import escape
+import re
 from markdown_it import MarkdownIt
 from mdit_py_plugins.front_matter import front_matter_plugin
 from pygments import highlight
@@ -143,6 +146,26 @@ DEFAULT_OPTIONS = {
     }
 }
 
+CONTENT_MODE_KEY = "ContentMode"
+CONTENT_MODE_REGIONS = "regions"
+REGION_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+REGION_OPEN_PATTERN = re.compile(r"^:::\s+region(?:\s+(.*?))?\s*$")
+REGION_CLOSE_PATTERN = re.compile(r"^:::\s*$")
+RICH_PAGE_RESERVED_KEYS = {"content", "content_regions"}
+
+
+class MarkdownContentError(ValueError):
+    def __init__(self, source: str, errors: list[tuple[int, str, str]]):
+        self.source = source
+        self.errors = errors
+        lines = []
+        for line_number, message, excerpt in errors:
+            location = f"{source}:{line_number}" if line_number else source
+            lines.append(f"{location}: {message}")
+            if excerpt:
+                lines.append(f"    {excerpt}")
+        super().__init__("\n".join(lines))
+
 
 def _deep_merge(base: dict, overrides: dict) -> dict:
     merged = dict(base)
@@ -211,10 +234,178 @@ def _initialize(options: dict = None):
     )
 
 
-def parseCommonMark(markdown: str, options: dict = None):
+def _region_plugin(md: MarkdownIt):
+    def region_rule(state, start_line: int, _end_line: int, silent: bool) -> bool:
+        start = state.bMarks[start_line] + state.tShift[start_line]
+        maximum = state.eMarks[start_line]
+        line = state.src[start:maximum]
+        open_match = REGION_OPEN_PATTERN.fullmatch(line)
+        is_close = REGION_CLOSE_PATTERN.fullmatch(line)
+        if open_match is None and is_close is None:
+            return False
+        if silent:
+            return True
+
+        token_type = "content_region_open" if open_match is not None else "content_region_close"
+        token = state.push(token_type, "", 0)
+        token.block = True
+        token.map = [start_line, start_line + 1]
+        token.meta = {
+            "name": open_match.group(1) if open_match is not None else None,
+            "column": state.tShift[start_line] + 1,
+        }
+        state.line = start_line + 1
+        return True
+
+    def render_region_marker(*_args, **_kwargs) -> str:
+        return ""
+
+    md.block.ruler.before(
+        "fence",
+        "content_region",
+        region_rule,
+        {"alt": ["paragraph", "reference", "blockquote", "list"]},
+    )
+    md.add_render_rule("content_region_open", render_region_marker)
+    md.add_render_rule("content_region_close", render_region_marker)
+
+
+def _line_details(markdown: str, token) -> tuple[int, str]:
+    if not token.map:
+        return 0, ""
+    line_index = token.map[0]
+    source_lines = markdown.splitlines()
+    excerpt = source_lines[line_index].strip() if line_index < len(source_lines) else ""
+    return line_index + 1, excerpt
+
+
+def _frontmatter_key_details(markdown: str, key: str) -> tuple[int, str]:
+    pattern = re.compile(rf"^\s*{re.escape(key)}\s*:")
+    for index, line in enumerate(markdown.splitlines()):
+        if pattern.match(line):
+            return index + 1, line.strip()
+    return 1, ""
+
+
+def _parse_regions(md: MarkdownIt, markdown: str, source: str) -> tuple[str, dict[str, str]]:
+    env = {}
+    tokens = md.parse(markdown, env)
+    errors = []
+    regions = {}
+    current_name = None
+    current_tokens = []
+    seen_names = set()
+
+    for token in tokens:
+        if token.type == "front_matter":
+            continue
+
+        if token.type == "content_region_open":
+            line_number, excerpt = _line_details(markdown, token)
+            name = (token.meta.get("name") or "").strip()
+            if token.level != 0 or token.meta.get("column") != 1:
+                errors.append((line_number, "region directives must start at the top level in column 1", excerpt))
+            if current_name is not None:
+                errors.append((line_number, f'region "{name}" is nested inside region "{current_name}"', excerpt))
+            if not name:
+                errors.append((line_number, "region name is missing", excerpt))
+            elif not REGION_NAME_PATTERN.fullmatch(name):
+                errors.append((line_number, f'invalid region name "{name}"', excerpt))
+            elif name in seen_names:
+                errors.append((line_number, f'duplicate region "{name}"', excerpt))
+
+            if current_name is None:
+                current_name = name
+                current_tokens = []
+                if name:
+                    seen_names.add(name)
+            continue
+
+        if token.type == "content_region_close":
+            line_number, excerpt = _line_details(markdown, token)
+            if token.level != 0 or token.meta.get("column") != 1:
+                errors.append((line_number, "region directives must start at the top level in column 1", excerpt))
+            if current_name is None:
+                errors.append((line_number, "region closing marker has no opening marker", excerpt))
+            else:
+                if not current_tokens:
+                    errors.append((line_number, f'region "{current_name}" is empty', excerpt))
+                elif REGION_NAME_PATTERN.fullmatch(current_name) and current_name not in regions:
+                    regions[current_name] = md.renderer.render(current_tokens, md.options, env)
+                current_name = None
+                current_tokens = []
+            continue
+
+        if current_name is None:
+            line_number, excerpt = _line_details(markdown, token)
+            if excerpt.startswith(":::"):
+                message = "malformed region directive"
+            else:
+                message = "Markdown content is outside a region"
+            errors.append((line_number, message, excerpt))
+        else:
+            current_tokens.append(token)
+
+    if current_name is not None:
+        open_line = next(
+            (
+                token
+                for token in reversed(tokens)
+                if token.type == "content_region_open"
+                and (token.meta.get("name") or "").strip() == current_name
+            ),
+            None,
+        )
+        line_number, excerpt = _line_details(markdown, open_line) if open_line else (0, "")
+        errors.append((line_number, f'region "{current_name}" has no closing marker', excerpt))
+
+    if errors:
+        raise MarkdownContentError(source, errors)
+
+    content_tokens = [
+        token
+        for token in tokens
+        if token.type not in {"content_region_open", "content_region_close"}
+    ]
+    content = md.renderer.render(content_tokens, md.options, env)
+    return content, regions
+
+
+def parseCommonMark(markdown: str, options: dict = None, source: str = "<string>"):
+    try:
+        post = frontmatter.loads(markdown)
+    except Exception as error:
+        problem_mark = getattr(error, "problem_mark", None)
+        line_number = problem_mark.line + 1 if problem_mark is not None else 1
+        source_lines = markdown.splitlines()
+        excerpt = source_lines[line_number - 1].strip() if line_number <= len(source_lines) else ""
+        problem = getattr(error, "problem", None) or str(error)
+        raise MarkdownContentError(
+            source,
+            [(line_number, f"invalid front matter: {problem}", excerpt)],
+        ) from error
+
+    metadata = post.metadata
     md = _initialize(options)
+    content_mode = metadata.get(CONTENT_MODE_KEY)
+    if content_mode == CONTENT_MODE_REGIONS:
+        conflicts = sorted(RICH_PAGE_RESERVED_KEYS.intersection(metadata))
+        if conflicts:
+            errors = []
+            for key in conflicts:
+                line_number, excerpt = _frontmatter_key_details(markdown, key)
+                errors.append((line_number, f'front-matter key "{key}" is reserved by Pysocha', excerpt))
+            raise MarkdownContentError(source, errors)
+        _region_plugin(md)
+        rendered, regions = _parse_regions(md, markdown, source)
+    else:
+        rendered = md.render(markdown)
+        regions = None
+
     retVal = {
-        "frontmatter": frontmatter.loads(markdown).metadata,
-        "markdown": md.render(markdown),
+        "frontmatter": metadata,
+        "markdown": rendered,
     }
+    if regions is not None:
+        retVal["content_regions"] = regions
     return retVal

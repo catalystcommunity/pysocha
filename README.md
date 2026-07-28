@@ -76,6 +76,133 @@ pysocha preview --config-file config.yaml
 The generated files are written to `outputDir` from your config. Extra files are
 copied from `content/extra_files` into that output directory.
 
+## Markdown pages
+
+A page can contain YAML front matter and one Markdown body. Pysocha renders the
+body and supplies it to the selected Jinja template as `content`.
+
+```markdown
+---
+Title: "Example page"
+Template: "page.jinja2"
+---
+
+# Example page
+
+This is the page body.
+```
+
+```jinja2
+<main>
+  {{ content }}
+</main>
+```
+
+This model is the default. Existing pages and blog posts do not need changes.
+
+## Pages with content regions
+
+A page can supply more than one Markdown region to its template. Set
+`ContentMode` to `regions` to use this model.
+
+```markdown
+---
+Title: "Example service"
+Template: "service.jinja2"
+ContentMode: regions
+Components:
+  primary_action:
+    label: "Start now"
+    url: "/start/"
+---
+
+::: region introduction
+# A clear introduction
+
+Use **standard Markdown** in each region.
+:::
+
+::: region details
+## More information
+
+- First item
+- Second item
+:::
+```
+
+Start a region with `::: region NAME`. End it with `:::`. A region name must
+start with a letter. It can contain letters, numbers, hyphens, and underscores.
+
+The template gets an ordered mapping named `content_regions`. Use bracket
+access for a region name.
+
+```jinja2
+<main class="introduction">
+  {{ content_regions["introduction"] }}
+</main>
+
+<aside class="details">
+  {{ content_regions["details"] }}
+</aside>
+
+{% if Components is defined and Components.primary_action is defined %}
+  {% with action=Components.primary_action %}
+    {% include "button.jinja2" %}
+  {% endwith %}
+{% endif %}
+```
+
+The included template owns the button HTML.
+
+```jinja2
+<a class="button" href="{{ action.url }}">{{ action.label }}</a>
+```
+
+Front matter can contain site-specific data such as labels, URLs, variants, and
+flags. Put related values in a namespace such as `Components` or `Actions`.
+Pysocha does not define the values in these namespaces.
+
+Each region supports the same Markdown configuration as an ordinary page. This
+includes headings, paragraphs, emphasis, lists, links, inline code, fenced code
+blocks, and syntax highlighting. Pysocha also supplies `content`. For a region
+page, `content` contains all region HTML in source order.
+
+### Region validation
+
+Pysocha applies these rules when `ContentMode` is `regions`:
+
+- Each region name must be unique.
+- Each region must contain content.
+- Each opening marker must have a closing marker.
+- Regions must not be nested.
+- Region markers must start in column 1 at the document top level.
+- Markdown body content must be inside a region.
+- `content` and `content_regions` are reserved front-matter keys.
+
+A marker inside a fenced code block is code. It does not start or end a region.
+
+Pysocha reports the source path, line number, and relevant source text for a
+region or front-matter error.
+
+```text
+content/pages/index.md:18: duplicate region "details"
+    ::: region details
+```
+
+Region pages use strict Jinja value checks. A missing required value stops the
+build. Use an explicit `is defined` check for optional values. Ordinary pages
+keep the existing permissive Jinja behavior.
+
+## Staged output
+
+Pysocha builds the complete site in a temporary directory next to `outputDir`.
+It publishes the new output only after all build steps succeed. If parsing,
+template rendering, feed generation, or file copying fails, Pysocha keeps the
+previous output and removes the temporary output.
+
+The publish step keeps a backup while it replaces the output directory. If the
+replacement fails, Pysocha restores the backup.
+
 ## Blog Frontmatter
 
 Blog posts are Markdown files in `content/blog_posts`. Required fields:
