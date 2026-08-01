@@ -1,0 +1,78 @@
+{% extends "base.jinja2" %}
+{% block content %}
+	<h2>Search</h2>
+	<form id="search_form" onsubmit="return false;">
+		<input id="search_input" type="search" autocomplete="off" placeholder="Search this site" autofocus />
+	</form>
+	<div id="search_status"></div>
+	<ol id="search_results"></ol>
+{% endblock %}
+{% block extra_footer %}
+{# The Pagefind bundle is a module, so the search page imports it. Every path
+   below is root-relative, which means this template also works when the search
+   page is reached from any depth in the site. #}
+<script type="module">
+	const bundle = "{{ search.data.module }}";
+	const baseUrl = "{{ search.data.baseUrl }}";
+	const input = document.getElementById("search_input");
+	const status = document.getElementById("search_status");
+	const results = document.getElementById("search_results");
+
+	let pagefind = null;
+	let generation = 0;
+
+	async function ready() {
+		if (pagefind === null) {
+			pagefind = await import(bundle);
+			// The bundle lives under the search path, so Pagefind has to be told
+			// where the site root is. Without this every result link is wrong.
+			await pagefind.options({ baseUrl: baseUrl });
+			await pagefind.init();
+		}
+		return pagefind;
+	}
+
+	async function run(query) {
+		const current = ++generation;
+		if (query.trim() === "") {
+			results.replaceChildren();
+			status.textContent = "";
+			return;
+		}
+		const engine = await ready();
+		const search = await engine.search(query);
+		// A slower search that started earlier must not overwrite a newer one.
+		if (current !== generation) {
+			return;
+		}
+		const found = await Promise.all(search.results.slice(0, 20).map((r) => r.data()));
+		if (current !== generation) {
+			return;
+		}
+		status.textContent = `${search.results.length} result(s)`;
+		results.replaceChildren(...found.map((item) => {
+			const entry = document.createElement("li");
+			const link = document.createElement("a");
+			link.href = item.url;
+			link.textContent = item.meta.title || item.url;
+			const excerpt = document.createElement("p");
+			excerpt.innerHTML = item.excerpt;
+			entry.append(link, excerpt);
+			return entry;
+		}));
+	}
+
+	let timer = null;
+	input.addEventListener("input", () => {
+		clearTimeout(timer);
+		timer = setTimeout(() => run(input.value), 120);
+	});
+
+	// A shared link such as /search/?q=static runs the search on load.
+	const initial = new URLSearchParams(location.search).get("q");
+	if (initial) {
+		input.value = initial;
+		run(initial);
+	}
+</script>
+{% endblock %}

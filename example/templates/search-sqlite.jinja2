@@ -1,0 +1,98 @@
+{% extends "base.jinja2" %}
+{% block content %}
+	<h2>News search</h2>
+	<p>
+		This search ranks by relevance and by age together. A post keeps half its
+		relevance after {{ search.data.ranking.halfLifeDays }} days.
+	</p>
+	<form id="search_form" onsubmit="return false;">
+		<input id="search_input" type="search" autocomplete="off" placeholder="Search the blog" />
+	</form>
+	<div id="search_status"></div>
+	<ol id="search_results"></ol>
+	<p id="search_stats"></p>
+{% endblock %}
+{% block extra_footer %}
+{# The provider says which scripts this page needs, and in which order. The
+   sql.js-httpvfs bundle has to load before the pysocha code that uses it. #}
+{% for script in search.scripts %}
+<script src="{{ script }}"></script>
+{% endfor %}
+<script>
+	(function () {
+		var input = document.getElementById("search_input");
+		var status = document.getElementById("search_status");
+		var results = document.getElementById("search_results");
+		var stats = document.getElementById("search_stats");
+		var ready = null;
+		var generation = 0;
+
+		function start() {
+			if (ready === null) {
+				// The database is only opened when someone actually searches, so
+				// a reader who never uses search downloads none of it.
+				ready = PysochaSearch.create({
+					manifest: "{{ search.data.manifest }}",
+					worker: "{{ search.data.worker }}",
+					wasm: "{{ search.data.wasm }}"
+				});
+			}
+			return ready;
+		}
+
+		function run(text) {
+			var current = ++generation;
+			if (text.trim() === "") {
+				results.replaceChildren();
+				status.textContent = "";
+				return;
+			}
+			status.textContent = "Searching…";
+			start().then(function (search) {
+				return search.query(text).then(function (rows) {
+					// A slower search that started earlier must not win.
+					if (current !== generation) {
+						return;
+					}
+					status.textContent = rows.length + " result(s)";
+					results.replaceChildren.apply(results, rows.map(function (row) {
+						var entry = document.createElement("li");
+						var link = document.createElement("a");
+						link.href = row.url;
+						link.textContent = row.title;
+						var when = document.createElement("small");
+						when.textContent = " " + (row.date || "").slice(0, 10) +
+							" (score " + row.score.toFixed(3) + ")";
+						var excerpt = document.createElement("p");
+						excerpt.innerHTML = row.excerpt;
+						entry.append(link, when, excerpt);
+						return entry;
+					}));
+					// The worker answers over a message channel, so this waits.
+					return search.stats().then(function (used) {
+						if (used) {
+							stats.textContent = "Fetched " + used.totalFetchedBytes +
+								" of " + used.totalBytes + " bytes in " +
+								used.totalRequests + " request(s).";
+						}
+					});
+				});
+			}).catch(function (error) {
+				status.textContent = "Search failed: " + error.message;
+			});
+		}
+
+		var timer = null;
+		input.addEventListener("input", function () {
+			clearTimeout(timer);
+			timer = setTimeout(function () { run(input.value); }, 150);
+		});
+
+		var initial = new URLSearchParams(location.search).get("q");
+		if (initial) {
+			input.value = initial;
+			run(initial);
+		}
+	})();
+</script>
+{% endblock %}
