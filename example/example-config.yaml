@@ -13,6 +13,23 @@ markdown:
     cssClass: "highlight"
     noclasses: True # Inline themed styles so generated pages stay standalone static HTML
 
+# A site can configure as many searches as it wants. Each one gets its own path
+# and chooses which sections of the site it covers.
+search:
+  - name: "site" # Unique, and used in messages
+    provider: "pagefind" # Built-in key, or a "module:Class" path to your own
+    path: "search" # The search page is at /search/
+    template: "search.jinja2" # Leave this out to build the index but no page
+    include: ["posts", "pages"] # Which sections to index
+  - name: "news" # A second search, over posts only, ranked by recency
+    provider: "sqlite-fts5"
+    path: "news-search"
+    template: "search-sqlite.jinja2"
+    include: ["posts"]
+    options: # Everything here is passed to the provider untouched
+      halfLifeDays: 30 # A post keeps half its relevance after 30 days
+      titleWeight: 10.0
+
 # These keys are used for general files, like the index page, but you can add more
 # and they will be passed to templates as named variables
 pageConfig: # Where things start for pages, but note you could override these in the frontmatter of a page

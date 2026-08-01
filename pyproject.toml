@@ -30,6 +30,13 @@ dependencies = [
 readme = "README.md"
 requires-python = ">= 3.8"
 
+[project.optional-dependencies]
+# The sqlite-fts5 search provider needs nothing extra, because FTS5 is part of
+# the standard library sqlite3 module.
+# Pagefind itself needs Python 3.9 or newer, so the marker keeps pysocha usable
+# on 3.8 for everyone who does not use this provider.
+search-pagefind = ["pagefind[bin]>=1.5,<2; python_version >= '3.9'"]
+
 [project.scripts]
 pysocha = 'pysocha:main'
 

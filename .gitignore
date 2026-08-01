@@ -14,3 +14,11 @@ env/
 # Specific to this project
 generated/
 scratch.py
+
+# Browser assets that the sqlite-fts5 search provider downloads on demand. The
+# directory is kept so that the example shows where they go, but the files
+# themselves stay out of this repository. A site that uses pysocha may well want
+# to commit its own copy instead, which is why the provider writes them into
+# extra_files.
+example/content/extra_files/vendor/*
+!example/content/extra_files/vendor/.gitkeep

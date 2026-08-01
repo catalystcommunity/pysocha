@@ -14,10 +14,33 @@ from slugify import slugify
 
 from pysocha.atom import build_atom_feed, build_rss_feed, validate_atom_feed, validate_rss_feed
 from pysocha.markdown import parseCommonMark
+from pysocha.search import SECTION_PAGES, SECTION_POSTS, build_search_indexes
+from pysocha.search.text import split_text_and_code
+from pysocha.search.types import SearchRecord
 
 
 class ContentBuildError(RuntimeError):
     pass
+
+
+def _document_text(content: str, regions=None):
+    """Collect the prose and the code of one document, in template order.
+
+    Regions are rendered separately, so they have to be gathered as well or a
+    rich page contributes nothing to the index.
+    """
+    parts = [content or ""]
+    if regions:
+        parts.extend(str(value) for value in regions.values())
+    prose_parts = []
+    code_parts = []
+    for part in parts:
+        prose, code = split_text_and_code(part)
+        if prose:
+            prose_parts.append(prose)
+        if code:
+            code_parts.append(code)
+    return "\n".join(prose_parts), "\n".join(code_parts)
 
 
 def _markdown_options(config: dict) -> dict:
@@ -46,6 +69,19 @@ def _parse_post_date(value):
     return posted_date.astimezone(timezone.utc)
 
 
+def strip_markdown_extension(filename: str) -> str:
+    """
+    Remove the .md suffix from a source file name.
+
+    This has to remove the suffix, not a set of characters. "diagram.md" must
+    become "diagram", and the page URL and the link replacement map must agree,
+    or links point at files that do not exist.
+    """
+    if filename.endswith('.md'):
+        return filename[:-len('.md')]
+    return filename
+
+
 def get_markdown_files(directory):
     """
     This function is used to get all the markdown files in a directory
@@ -56,11 +92,41 @@ def get_markdown_files(directory):
             files.append(file)
     return files
 
+def _post_search_record(blog_config: dict, blog_post: dict) -> SearchRecord:
+    """Describe one blog post for the search index."""
+    prose, code = _document_text(blog_post.get('content'), blog_post.get('content_regions'))
+    meta = {'title': blog_post['Title']}
+    if blog_post.get('Author'):
+        meta['author'] = str(blog_post['Author'])
+    hook = blog_post.get('hook') or blog_post.get('summary')
+    if hook:
+        meta['hook'] = str(hook)
+
+    filters = {'section': [SECTION_POSTS]}
+    if blog_post.get('Tags'):
+        filters['tags'] = [str(tag) for tag in blog_post['Tags']]
+    if blog_post.get('Author'):
+        filters['author'] = [str(blog_post['Author'])]
+
+    return SearchRecord(
+        url='/' + blog_config['blogBaseDir'] + '/' + blog_post['slugify'],
+        title=str(blog_post['Title']),
+        content=prose,
+        code=code,
+        section=SECTION_POSTS,
+        date=blog_post.get('PostedDate'),
+        meta=meta,
+        filters=filters,
+    )
+
+
 def generate_blog_posts(config: dict, verbose: bool = False):
     """
     We go through all blog posts and their related optional outputs like tags or authors, depending on config
+
+    Returns the search records for every listed post.
     """
-    
+
     templateDir = config['templatesDir']
     templateLoader = jinja2.FileSystemLoader(searchpath=templateDir)
     templateEnv = jinja2.Environment( loader=templateLoader )
@@ -115,12 +181,15 @@ def generate_blog_posts(config: dict, verbose: bool = False):
     os.makedirs(output_dir, exist_ok=True)
 
     # We'll need to make all the blog posts
+    search_records = []
     for blog_post in sorted_posts:
         output_filename = os.path.join(output_dir, blog_post['slugify'])
         if verbose:
             print(_display_output_path(config, output_filename))
         with open(output_filename, 'w+') as f:
             f.write(blog_post['rendered'])
+
+        search_records.append(_post_search_record(blog_config, blog_post))
 
         # Now populate lists, first one only if the post has all the keys needed for a listing
         listings.append(blog_post)
@@ -255,9 +324,13 @@ def generate_blog_posts(config: dict, verbose: bool = False):
             with open(output_filename, 'w+') as f:
                 f.write(rss_feed)
 
+    return search_records
+
 def generate_pages(config: dict, verbose: bool = False):
     """
     We go through all the possibilities for generating any page related details
+
+    Returns the search records for every page.
     """
     templateDir = config['templatesDir']
     templateLoader = jinja2.FileSystemLoader(searchpath=templateDir)
@@ -268,6 +341,7 @@ def generate_pages(config: dict, verbose: bool = False):
     outputDir = os.path.join(os.getcwd(), config['outputDir'])
 
     pages = {}
+    search_records = []
     pages_dir = os.path.join(config['contentDir'], 'pages')
     for page in get_markdown_files(pages_dir):
         pages[page] = {}
@@ -282,7 +356,7 @@ def generate_pages(config: dict, verbose: bool = False):
             page_template = environment.get_template(mark['frontmatter']['Template'])
         # Same with file extension, which opens some nice scripting possibilities
         file_ext = mark['frontmatter'].get('Extension', config['defaultExtension'])
-        pages[page]['slugify'] = page.rstrip('.md')
+        pages[page]['slugify'] = strip_markdown_extension(page)
         output_filename = os.path.join(outputDir + '/' + pages[page]['slugify'] + file_ext)
         if verbose:
             print(_display_output_path(config, output_filename))
@@ -296,6 +370,21 @@ def generate_pages(config: dict, verbose: bool = False):
             foo = config['_pattern'].sub(lambda m: config['_replacements'][m.group(0)], foo)
             f.write(foo)
 
+        if not context.get('Unlisted'):
+            prose, code = _document_text(context.get('content'), mark.get('content_regions'))
+            title = str(context.get('Title') or pages[page]['slugify'])
+            search_records.append(SearchRecord(
+                url='/' + pages[page]['slugify'] + file_ext,
+                title=title,
+                content=prose,
+                code=code,
+                section=SECTION_PAGES,
+                meta={'title': title},
+                filters={'section': [SECTION_PAGES]},
+            ))
+
+    return search_records
+
 def generate_extras(config: dict):
     """
     EVERY site should have extra files, even if it's just CSS or JS files, so process them here very simply
@@ -303,6 +392,41 @@ def generate_extras(config: dict):
     extra_files_dir = os.path.join(config['contentDir'], 'extra_files')
     output_dir = os.path.join(config['outputDir']) 
     shutil.copytree(extra_files_dir, output_dir, dirs_exist_ok=True)
+
+def generate_search(config: dict, records: list, verbose: bool = False):
+    """
+    Build every configured search index, and render the search page of each one
+    that names a template. This runs inside the staged output, so a failed index
+    never replaces a good site.
+    """
+    if not config.get('search'):
+        return []
+
+    templateEnv = jinja2.Environment(loader=jinja2.FileSystemLoader(searchpath=config['templatesDir']))
+
+    def render_page(instance, context, assets):
+        template = templateEnv.get_template(instance.template)
+        page = {
+            'name': instance.name,
+            'path': instance.path,
+            'url': context.instance_url,
+            'provider': instance.provider,
+            'scripts': assets.scripts,
+            'styles': assets.styles,
+            'data': assets.data,
+        }
+        output_filename = os.path.join(context.instance_dir, 'index' + config['defaultExtension'])
+        if verbose:
+            print(_display_output_path(config, output_filename))
+        with open(output_filename, 'w+') as f:
+            f.write(_render_template(
+                template,
+                {'search': page, 'title': config['siteTitle'], 'site': config['siteTitle']},
+                f"search:{instance.name}",
+            ))
+
+    return build_search_indexes(config, records, render_page=render_page, verbose=verbose)
+
 
 def build_pages_replacement_map(config: dict) -> dict:
     """
@@ -312,7 +436,7 @@ def build_pages_replacement_map(config: dict) -> dict:
     pages_dir = os.path.join(config['contentDir'], 'pages')
     replacements = {}
     for page in get_markdown_files(pages_dir):
-        replacements[page] = page.replace('.md', config['defaultExtension'])
+        replacements[page] = strip_markdown_extension(page) + config['defaultExtension']
     return replacements
 
 def build_posts_replacement_map(config: dict) -> dict:
@@ -387,8 +511,9 @@ def buildSite(config: dict, verbose: bool = False):
         rep = dict((re.escape(k), v) for k, v in build_config['_replacements'].items())
         build_config['_pattern'] = re.compile("|".join(rep.keys()))
         generate_extras(build_config)
-        generate_pages(build_config, verbose=verbose)
-        generate_blog_posts(build_config, verbose=verbose)
+        search_records = generate_pages(build_config, verbose=verbose)
+        search_records += generate_blog_posts(build_config, verbose=verbose)
+        generate_search(build_config, search_records, verbose=verbose)
         os.chmod(staged_output, output_mode)
         _publish_staged_output(staged_output, output_dir)
     finally:

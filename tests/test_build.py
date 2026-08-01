@@ -314,3 +314,66 @@ def test_publish_failure_restores_previous_output(tmp_path, monkeypatch):
 
     assert (output / "index.html").read_text() == "previous"
     assert list(tmp_path.glob(".generated.pysocha-backup-*")) == []
+
+
+def test_page_names_keep_every_character_before_the_extension(tmp_path, monkeypatch):
+    # Stripping ".md" as a set of characters ate trailing d, m and dot
+    # characters, so "diagram.md" became "diagra".
+    config = _write_minimal_site(tmp_path, """Title: Post
+Author: Tod
+AuthorEmail: tod@example.com
+PostedDate: "2026-07-14T10:00:00-06:00"
+""")
+    for name in ["diagram.md", "command.md", "dammed.md", "index.md"]:
+        (tmp_path / "content" / "pages" / name).write_text(
+            "---\nTitle: %s\n---\nBody\n" % name
+        )
+    monkeypatch.chdir(tmp_path)
+
+    buildSite(config)
+
+    generated = tmp_path / "generated"
+    for expected in ["diagram.html", "command.html", "dammed.html", "index.html"]:
+        assert (generated / expected).is_file(), expected
+
+
+def test_links_between_pages_point_at_the_files_that_exist(tmp_path, monkeypatch):
+    # The link replacement map and the output file name have to agree, or a
+    # link points at a page that was never written.
+    config = _write_minimal_site(tmp_path, """Title: Post
+Author: Tod
+AuthorEmail: tod@example.com
+PostedDate: "2026-07-14T10:00:00-06:00"
+""")
+    (tmp_path / "content" / "pages" / "diagram.md").write_text(
+        "---\nTitle: Diagram\n---\nA diagram page\n"
+    )
+    (tmp_path / "content" / "pages" / "index.md").write_text(
+        "---\nTitle: Home\n---\nSee [the diagram](diagram.md)\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    buildSite(config)
+
+    generated = tmp_path / "generated"
+    assert 'href="diagram.html"' in (generated / "index.html").read_text()
+    assert (generated / "diagram.html").is_file()
+
+
+def test_default_config_supplies_the_listing_pagination_key_the_build_reads(tmp_path, monkeypatch):
+    # The default config spelled this key listingPagination_num, so a site that
+    # relied on the defaults failed with a KeyError.
+    from pysocha.config import override_config
+
+    config = _write_minimal_site(tmp_path, """Title: Post
+Author: Tod
+AuthorEmail: tod@example.com
+PostedDate: "2026-07-14T10:00:00-06:00"
+""")
+    del config["blogConfig"]["listingPaginationNum"]
+    merged = override_config(config)
+    monkeypatch.chdir(tmp_path)
+
+    buildSite(merged)
+
+    assert (tmp_path / "generated" / "blog" / "listing1.html").is_file()

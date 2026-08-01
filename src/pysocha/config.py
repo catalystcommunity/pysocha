@@ -16,7 +16,9 @@ markdown:
     style: "catppuccin-mocha"
     cssClass: "highlight"
     noclasses: True
-pageConfig: 
+language: "en"
+search: []
+pageConfig:
   pageTitle: "Example dot Com!"
   pageDefaultTemplate: "page.jinja2"
 blogConfig: 
@@ -24,7 +26,7 @@ blogConfig:
   blogBaseDir: "blog"
   blogTemplate: "blog.jinja2"
   listingTemplate: "listing.jinja2"
-  listingPagination_num: 5
+  listingPaginationNum: 5
   listingKeysNeeded: ['hook']
   atomFeeds: True
   disableRSS: False
