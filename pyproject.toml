@@ -1,6 +1,6 @@
 [project]
 name = "pysocha"
-version = "0.3.1"
+version = "0.4.1"
 description = "Extremely simple static site generator"
 authors = [
     { name = "Tod Hansmann", email = "githubpub@todandlorna.com" }
