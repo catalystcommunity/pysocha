@@ -78,6 +78,11 @@ pip install 'pysocha[search-pagefind]'
 The provider needs Python 3.9 or newer. Pysocha itself needs Python 3.8 or
 newer.
 
+The package uses Pagefind and its binary at version 1.5.2. The Linux x86-64
+binary in version 1.6.0 uses AVX instructions and fails on CPUs without AVX.
+The x86-64 architecture does not require AVX. Test a replacement binary on
+the build node before you change this version.
+
 ```yaml
 search:
   - name: "site"
@@ -97,6 +102,17 @@ search:
 | `includeCharacters` | none | More characters to keep in a word. |
 | `baseUrl` | `/` | The prefix of each result URL. |
 | `verbose` | `false` | Write more messages while it builds. |
+| `indexTimeout` | `120` | Maximum indexing time in seconds. Use a positive, finite number. |
+
+If the Pagefind process exits or its response reader fails, the build stops
+with an error. The error includes the exit code or signal when available.
+The time limit includes index creation, records, and file output. Process
+cleanup can take up to two additional seconds.
+
+The provider does not retry a failed index. A CPU instruction failure will
+occur again with the same binary on the same node. Correct the binary or
+node configuration before you retry. For a temporary failure, retry the
+complete build so that the index starts with no partial state.
 
 The template gets these values in `search.data`:
 

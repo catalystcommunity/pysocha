@@ -26,6 +26,8 @@ Options, under ``options:`` in the search config:
     the site is served from a subpath.
 ``verbose``
     Print extra Pagefind logging while indexing.
+``indexTimeout``
+    Stop indexing after this number of seconds. Defaults to 120.
 
 Each search keeps its own bundle inside its own directory, so that a site can
 run more than one search. Pagefind otherwise assumes the site root is the parent
@@ -34,6 +36,7 @@ the search page must set ``baseUrl``. The value is in ``assets.data.baseUrl``.
 """
 
 import asyncio
+import math
 import os
 from typing import Any, Dict, List
 
@@ -78,9 +81,10 @@ class PagefindProvider(SearchProvider):
         return config
 
     async def _build(self, bundle_dir: str) -> None:
-        from pagefind.index import PagefindIndex
+        from ._pagefind_service import CheckedPagefindService
 
-        async with PagefindIndex(config=self._index_config(bundle_dir)) as index:
+        async with CheckedPagefindService() as service:
+            index = await service.create_index(config=self._index_config(bundle_dir))
             for record in self._records:
                 meta = dict(record.meta)
                 meta.setdefault("title", record.title)
@@ -93,7 +97,15 @@ class PagefindProvider(SearchProvider):
                     filters=record.filters or None,
                     sort=_sort_value(record) or None,
                 )
-            # The bundle is written when the context closes, using output_path.
+            await index.write_files(output_path=bundle_dir)
+
+    async def _build_with_timeout(self, bundle_dir: str, timeout: float) -> None:
+        try:
+            await asyncio.wait_for(self._build(bundle_dir), timeout=timeout)
+        except asyncio.TimeoutError as error:
+            raise RuntimeError(
+                "Pagefind indexing exceeded {} seconds".format(timeout)
+            ) from error
 
     def finalize(self) -> SearchAssets:
         try:
@@ -104,9 +116,19 @@ class PagefindProvider(SearchProvider):
                 "Install it with: pip install 'pysocha[search-pagefind]'"
             ) from error
 
+        timeout = self.options.get("indexTimeout", 120)
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError(
+                "Pagefind indexTimeout must be a positive, finite number of seconds"
+            )
         bundle_dir = os.path.join(self.context.instance_dir, BUNDLE_DIRNAME)
         os.makedirs(bundle_dir, exist_ok=True)
-        asyncio.run(self._build(bundle_dir))
+        asyncio.run(self._build_with_timeout(bundle_dir, timeout))
 
         bundle_url = self.context.instance_url + BUNDLE_DIRNAME + "/"
         return SearchAssets(

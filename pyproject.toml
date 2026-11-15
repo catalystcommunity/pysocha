@@ -35,7 +35,12 @@ requires-python = ">= 3.8"
 # the standard library sqlite3 module.
 # Pagefind itself needs Python 3.9 or newer, so the marker keeps pysocha usable
 # on 3.8 for everyone who does not use this provider.
-search-pagefind = ["pagefind[bin]>=1.5,<2; python_version >= '3.9'"]
+# The 1.6.0 Linux x86-64 binary executes AVX instructions on non-AVX CPUs.
+# Pin the binary explicitly: pagefind[bin] accepts any 1.x binary by default.
+search-pagefind = [
+    "pagefind[bin]==1.5.2; python_version >= '3.9'",
+    "pagefind-bin==1.5.2; python_version >= '3.9'",
+]
 
 [project.scripts]
 pysocha = 'pysocha:main'

@@ -564,7 +564,7 @@ wheels = [
 
 [[package]]
 name = "pysocha"
-version = "0.3.1"
+version = "0.4.1"
 source = { editable = "." }
 dependencies = [
     { name = "flask", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
@@ -592,6 +592,7 @@ dependencies = [
 [package.optional-dependencies]
 search-pagefind = [
     { name = "pagefind", extra = ["bin"], marker = "python_full_version >= '3.9'" },
+    { name = "pagefind-bin", marker = "python_full_version >= '3.9'" },
 ]
 
 [package.dev-dependencies]
@@ -608,7 +609,8 @@ requires-dist = [
     { name = "linkify-it-py", specifier = ">=2.0.3" },
     { name = "markdown-it-py", specifier = ">=3.0.0" },
     { name = "mdit-py-plugins", specifier = ">=0.4.1" },
-    { name = "pagefind", extras = ["bin"], marker = "python_full_version >= '3.9' and extra == 'search-pagefind'", specifier = ">=1.5,<2" },
+    { name = "pagefind", extras = ["bin"], marker = "python_full_version >= '3.9' and extra == 'search-pagefind'", specifier = "==1.5.2" },
+    { name = "pagefind-bin", marker = "python_full_version >= '3.9' and extra == 'search-pagefind'", specifier = "==1.5.2" },
     { name = "pygments", specifier = ">=2.18.0" },
     { name = "python-dateutil", specifier = ">=2.9.0.post0" },
     { name = "python-frontmatter", specifier = ">=1.1.0" },
