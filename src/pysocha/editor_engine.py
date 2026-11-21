@@ -14,7 +14,7 @@ from urllib.parse import quote
 import frontmatter
 import yaml
 from slugify import slugify
-from jinja2 import TemplateSyntaxError
+from jinja2 import TemplateNotFound, TemplateSyntaxError
 from werkzeug.serving import make_server
 
 from .build import buildSite, strip_markdown_extension
@@ -36,6 +36,8 @@ def explain(error):
         line = " on line {}".format(mark.line + 1) if mark else ""
         return "Check the YAML indentation and punctuation{}: {}".format(
             line, getattr(error, "problem", None) or str(error))
+    if isinstance(error, TemplateNotFound):
+        return "Pysocha could not find the template {!r}. Check the selected theme folder and template name.".format(error.name)
     if isinstance(error, TemplateSyntaxError):
         return "Check {} on line {}. {}".format(error.name, error.lineno, error.message)
     if isinstance(error, FileNotFoundError):

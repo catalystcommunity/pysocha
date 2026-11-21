@@ -76,6 +76,7 @@ impl Studio {
         let origin = Rc::new(RefCell::new(String::new()));
         let allowed = Rc::clone(&origin);
         let builder = wry::WebViewBuilder::new()
+            .with_visible(false)
             .with_navigation_handler(move |url| {
                 url == "about:blank" || url.starts_with(&format!("{}/", allowed.borrow()))
             })
@@ -166,7 +167,12 @@ impl Studio {
                 self.title = "Preview".into();
                 self.icon = None;
                 if let Some(web) = &self.web {
-                    web.update(cx, |w, _| w.load_url("about:blank"));
+                    web.update(cx, |w, _| {
+                        w.load_url("about:blank");
+                        if self.layout != Layout::Source {
+                            w.show();
+                        }
+                    });
                 }
                 self.toast.clear();
                 self.in_flight = false;
@@ -205,7 +211,7 @@ impl Studio {
             };
             let language = match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
                 "md" => "markdown",
-                "jinja2" | "jinja" | "j2" => "html",
+                "jinja2" | "jinja" | "j2" => "Jinja2",
                 "yml" => "yaml",
                 "js" => "javascript",
                 other => other,
@@ -241,6 +247,27 @@ impl Studio {
         if self.layout == Layout::Preview {
             self.set_layout(Layout::Source, cx);
         }
+        cx.notify();
+    }
+
+    fn close_active(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = &self.active else {
+            return;
+        };
+        if self.files[path].dirty
+            && rfd::MessageDialog::new()
+                .set_title("Discard changes to this file?")
+                .set_description(format!("Close {} without saving?", path.display()))
+                .set_buttons(rfd::MessageButtons::YesNo)
+                .show()
+                != rfd::MessageDialogResult::Yes
+        {
+            return;
+        }
+        self.files.remove(path);
+        self.active = self.files.keys().next_back().cloned();
+        self.follow_file = true;
+        self.schedule();
         cx.notify();
     }
 
@@ -494,6 +521,14 @@ impl Render for Studio {
                             }
                         })),
                 );
+            if self.active.is_some() {
+                tools = tools.child(
+                    Button::new("close-file")
+                        .ghost()
+                        .label("Close file")
+                        .on_click(cx.listener(|s, _, _, cx| s.close_active(cx))),
+                );
+            }
             if self.template.is_some() {
                 tools = tools.child(
                     Button::new("reset-theme")
@@ -558,13 +593,12 @@ impl Render for Studio {
             );
         }
         let preview_tab = Button::new("preview")
+            .when_some(self.icon.clone(), |b, icon| b.child(img(icon).size_4()))
             .ghost()
             .selected(self.layout == Layout::Preview)
             .label(self.title.clone())
             .on_click(cx.listener(|s, _, _, cx| s.set_layout(Layout::Preview, cx)));
-        tabs = tabs
-            .when_some(self.icon.clone(), |t, icon| t.child(img(icon).size_4()))
-            .child(preview_tab);
+        tabs = tabs.child(preview_tab);
         let mut layouts = bar();
         for (id, label, layout) in [
             ("source", "Editor", Layout::Source),
@@ -617,8 +651,10 @@ impl Render for Studio {
                     div()
                         .id("build-error")
                         .p_3()
-                        .bg(cx.theme().warning)
-                        .text_color(cx.theme().warning_foreground)
+                        .bg(cx.theme().popover)
+                        .text_color(cx.theme().popover_foreground)
+                        .border_l_4()
+                        .border_color(cx.theme().warning)
                         .on_hover(
                             cx.listener(|s, inside, _, _| s.toast.hover(*inside, Instant::now())),
                         )

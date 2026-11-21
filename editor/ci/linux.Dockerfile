@@ -15,7 +15,7 @@ COPY src src
 RUN set -eu; \
     export PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_LIBDIR=/usr/lib/$(echo "$TARGET" | sed s/-unknown//)/pkgconfig:/usr/share/pkgconfig; \
     export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc; \
-    if [ "$TARGET" = x86_64-unknown-linux-gnu ]; then cargo test --locked -j 4; fi; \
+    if [ "$TARGET" = x86_64-unknown-linux-gnu ]; then cargo test --release --locked --target "$TARGET" -j 4; fi; \
     cargo build --locked --release --target "$TARGET" -j 4; \
     cp "target/$TARGET/release/pysocha-editor" /pysocha-editor
 FROM scratch
