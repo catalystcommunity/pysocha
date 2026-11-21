@@ -1,0 +1,26 @@
+[package]
+name = "pysocha-editor"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+gpui-kit = { version = "=0.10.0", features = ["syntect"] }
+gpui-webview = "=0.10.0"
+wry = { version = "0.53.3", package = "lb-wry" }
+serde_json = "1"
+base64 = "0.22"
+rfd = "0.15"
+tempfile = "3"
+
+[profile.dev]
+debug = 0
+
+# Compile Metal shaders on the Mac when the application starts.
+[target.'cfg(target_os = "macos")'.dependencies]
+gpui-pre-macos = { version = "=0.3.12", features = ["runtime_shaders"] }
+
+# A Linux host cannot run fxc.exe. GPUI's runtime shader path calls
+# D3DCompile on the Windows machine. Keep the rest of the release optimized.
+[profile.release.package.gpui-pre-windows]
+debug-assertions = true

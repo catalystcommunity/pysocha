@@ -1,0 +1,10 @@
+name: pysocha-github-release
+job:
+  image: containers.catalystsquad.com/public/reactorcide/runnerbase:latest
+  command: "runnerlib run --job-command 'bash /job/ci/.reactorcide/scripts/release-editor.sh'"
+  working_dir: /job
+  timeout: 21600
+  capabilities: [builder]
+  disable_run_local: true
+environment:
+  GH_TOKEN: "${secret:catalystcommunity/ci:githubpat}"

@@ -6,3 +6,5 @@ on:
 jobs:
   pysocha-publish-pypi:
     job_file: publish.yaml
+  pysocha-github-release:
+    job_file: release-editor.yaml
