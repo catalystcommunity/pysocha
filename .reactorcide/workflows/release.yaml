@@ -1,0 +1,8 @@
+id: pysocha-release
+name: Publish Pysocha
+on:
+  events: [tag_created]
+  branches: ["v*"]
+jobs:
+  pysocha-publish-pypi:
+    job_file: publish.yaml
