@@ -35,6 +35,10 @@ uv sync
 uv run pysocha --help
 ```
 
+## Desktop editor
+
+Use Pysocha Editor to edit a site and preview unsaved changes. See the [editor guide](docs/editor.md) for installation and controls.
+
 ## Quickstart
 
 Make a site with this shape:

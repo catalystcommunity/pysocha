@@ -22,3 +22,4 @@ scratch.py
 # extra_files.
 example/content/extra_files/vendor/*
 !example/content/extra_files/vendor/.gitkeep
+/editor/target/

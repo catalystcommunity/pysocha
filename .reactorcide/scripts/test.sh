@@ -8,3 +8,5 @@ uv build --out-dir "$out"
 uv venv "$out/smoke"
 uv pip install --python "$out/smoke/bin/python" "$out"/*.whl
 (cd "$out" && smoke/bin/pysocha --help >/dev/null)
+rustc --edition=2024 --test editor/src/toast.rs -o "$out/toast-tests"
+"$out/toast-tests"
