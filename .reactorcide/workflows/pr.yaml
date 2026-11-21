@@ -1,0 +1,8 @@
+id: pysocha-pr
+name: Check Pysocha
+on:
+  events: [pull_request_opened, pull_request_updated]
+  branches: ["main"]
+jobs:
+  pysocha-test:
+    job_file: test.yaml

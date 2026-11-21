@@ -1,0 +1,8 @@
+id: pysocha-merge
+name: Tag the merged commit
+on:
+  events: [pull_request_merged]
+  branches: ["main"]
+jobs:
+  pysocha-release-tag:
+    job_file: tag.yaml

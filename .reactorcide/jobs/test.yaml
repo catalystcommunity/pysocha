@@ -1,0 +1,9 @@
+name: pysocha-test
+triggers:
+  events: [pull_request_opened, pull_request_updated]
+  branches: ["main"]
+job:
+  image: containers.catalystsquad.com/public/reactorcide/runnerbase:latest
+  command: "runnerlib run --job-command 'bash /job/ci/.reactorcide/scripts/test.sh'"
+  working_dir: /job
+  timeout: 1800

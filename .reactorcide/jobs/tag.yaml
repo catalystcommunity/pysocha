@@ -1,0 +1,12 @@
+name: pysocha-release-tag
+triggers:
+  events: [pull_request_merged]
+  branches: ["main"]
+job:
+  image: containers.catalystsquad.com/public/reactorcide/runnerbase:latest
+  command: "runnerlib run --job-command 'bash /job/ci/.reactorcide/scripts/tag.sh'"
+  working_dir: /job
+  timeout: 1800
+  disable_run_local: true
+environment:
+  GH_TOKEN: "${secret:catalystcommunity/ci:githubpat}"
