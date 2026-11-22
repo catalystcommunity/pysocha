@@ -1,6 +1,8 @@
 """Stop indexing when the Pagefind process or response reader fails."""
 
 import asyncio
+import base64
+import json
 import signal
 
 from pagefind.service import PagefindService
@@ -13,6 +15,29 @@ class CheckedPagefindService(PagefindService):
         await super().launch()
         self._exit_task = asyncio.create_task(self._backend.wait())
         return self
+
+    async def _wait_for_responses(self):
+        # readuntil already suspends until a complete Pagefind frame arrives.
+        while True:
+            frame = await self._backend.stdout.readuntil(b",")
+            response = json.loads(base64.b64decode(frame[:-1]))
+            if response is None:
+                continue
+            payload = response["payload"]
+            message_id = response.get("message_id")
+            if message_id is None and payload.get("original_message"):
+                original = json.loads(payload["original_message"])
+                if original is not None:
+                    message_id = original.get("message_id")
+            if message_id is not None and message_id > self._message_id:
+                raise ValueError("Pagefind returned an unknown request ID")
+            future = self._responses.pop(message_id, None)
+            if future is None or future.done():
+                continue
+            if payload["type"] == "Error":
+                future.set_exception(Exception(payload["message"], payload.get("original_message")))
+            else:
+                future.set_result(payload)
 
     def _exit_error(self):
         code = self._backend.returncode

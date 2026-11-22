@@ -1,5 +1,27 @@
 // The page can update the preview tab's label and image.
 if (window === window.top) {
+  // Replace loaded local stylesheets in place so edits preserve scroll and form state.
+  let stylesReady = Promise.resolve();
+  window.pysochaRefreshStyles = (path, revision) => {
+    const refresh = async () => {
+      const sheets = Array.from(document.querySelectorAll('link[rel~="stylesheet" i][href]'))
+        .filter(link => !link.disabled && new URL(link.href).origin === location.origin
+          && new URL(link.href).pathname === path);
+      // The browser can retain an @import even when its parent link is replaced.
+      if (!sheets.length) { location.reload(); return; }
+      await Promise.all(sheets.map(link => new Promise((resolve, reject) => {
+        const next = link.cloneNode();
+        const url = new URL(link.href);
+        url.searchParams.set('_pysocha', revision);
+        next.href = url.href;
+        next.onload = () => { link.remove(); resolve(); };
+        next.onerror = () => { next.remove(); reject(); };
+        link.after(next);
+      })));
+      window.ipc.postMessage(JSON.stringify({cssApplied: revision}));
+    };
+    stylesReady = stylesReady.then(refresh).catch(() => location.reload());
+  };
   let generation = 0;
   const report = async () => {
     const current = ++generation;

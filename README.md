@@ -1,5 +1,7 @@
 # pysocha
 
+<img src="editor/assets/pysocha.png" alt="Pysocha flame with a dashed stencil edge" width="96" height="96">
+
 Pysocha is a static site generator of as simple a variety as we can make for our
 needs.
 

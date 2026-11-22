@@ -10,7 +10,8 @@ RUN set -eu; case "$TARGET" in \
       libxkbcommon-x11-dev:$arch libfontconfig-dev:$arch libssl-dev:$arch \
       libx11-xcb-dev:$arch libx11-dev:$arch libwayland-dev:$arch; \
     rustup target add "$TARGET"
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY assets/pysocha-128.png assets/
 COPY src src
 RUN set -eu; \
     export PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_LIBDIR=/usr/lib/$(echo "$TARGET" | sed s/-unknown//)/pkgconfig:/usr/share/pkgconfig; \
