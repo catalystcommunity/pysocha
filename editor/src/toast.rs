@@ -24,6 +24,9 @@ impl Toast {
     pub fn message(&self) -> Option<&str> {
         (self.expires.is_some() || self.paused.is_some()).then_some(&self.last)
     }
+    pub fn deadline(&self) -> Option<Instant> {
+        self.expires
+    }
     pub fn tick(&mut self, now: Instant) -> bool {
         if self.expires.is_some_and(|end| end <= now) {
             self.expires = None;

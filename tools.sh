@@ -2,30 +2,38 @@
 
 set -e
 
-THISSCRIPT=$(basename $0)
-
-GITHUB_OUTPUT=${GITHUB_OUTPUT:-$(mktemp)}
-
-# Modify for the help message
 usage() {
-  echo "${THISSCRIPT} command"
-  echo "Executes the step command in the script."
-  exit 0
+  cat <<EOF
+Usage: ${0##*/} <command> [arguments]
+
+Commands:
+  setup                Install the locked Python dependencies, including search providers.
+  editor [SITE.yaml]   Build and start the editor. Optionally open a site configuration.
+  help, -h, --help     Show this help.
+EOF
 }
 
-setup() {
-  echo "Not really a thing yet."
-}
+repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
-# This should be last in the script, all other functions are named beforehand.
-case "$1" in
-  "setup")
-    shift
-    setup "$@"
+case "${1:-}" in
+  setup)
+    exec uv sync --project "$repo_dir" --locked --all-extras
     ;;
-  *)
+  editor)
+    shift
+    if (( $# > 1 )); then
+      usage >&2
+      exit 2
+    fi
+    exec uv run --project "$repo_dir" --locked --all-extras -- \
+      cargo run --locked --manifest-path "$repo_dir/editor/Cargo.toml" -- "$@"
+    ;;
+  ''|help|-h|--help)
     usage
     ;;
+  *)
+    printf 'Unknown command: %s\n' "$1" >&2
+    usage >&2
+    exit 2
+    ;;
 esac
-
-exit 0

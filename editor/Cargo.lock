@@ -5689,13 +5689,19 @@ name = "pysocha-editor"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "embed-resource",
  "gpui-kit",
  "gpui-pre-macos",
  "gpui-webview",
+ "image",
+ "indexmap",
  "lb-wry",
+ "raw-window-handle",
  "rfd",
  "serde_json",
+ "smol",
  "tempfile",
+ "x11rb",
 ]
 
 [[package]]

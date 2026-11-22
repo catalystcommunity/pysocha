@@ -88,7 +88,7 @@ def get_markdown_files(directory):
     """
     files = []
     for file in os.listdir(directory):
-        if file.endswith('.md'):
+        if file.endswith('.md') and not file.endswith('.template.md') and file != '0-basetemplate.md':
             files.append(file)
     return files
 
@@ -120,6 +120,22 @@ def _post_search_record(blog_config: dict, blog_post: dict) -> SearchRecord:
     )
 
 
+def _template_environment(config):
+    cache = config.get('_preview_cache')
+    return jinja2.Environment(loader=jinja2.FileSystemLoader(config['templatesDir']),
+                              bytecode_cache=cache.templates if cache else None)
+
+
+def _read_document(config, source_path):
+    with open(source_path) as source:
+        text = source.read()
+    options = _markdown_options(config)
+    cache = config.get('_preview_cache')
+    if cache is None:
+        return parseCommonMark(text, options, source=source_path)
+    return cache.parse(config['contentDir'], source_path, text, options)
+
+
 def generate_blog_posts(config: dict, verbose: bool = False):
     """
     We go through all blog posts and their related optional outputs like tags or authors, depending on config
@@ -127,9 +143,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
     Returns the search records for every listed post.
     """
 
-    templateDir = config['templatesDir']
-    templateLoader = jinja2.FileSystemLoader(searchpath=templateDir)
-    templateEnv = jinja2.Environment( loader=templateLoader )
+    templateEnv = _template_environment(config)
     strictTemplateEnv = templateEnv.overlay(undefined=jinja2.StrictUndefined)
     template = templateEnv.get_template(config['blogConfig']['blogTemplate'])
     strict_template = strictTemplateEnv.get_template(config['blogConfig']['blogTemplate'])
@@ -142,9 +156,7 @@ def generate_blog_posts(config: dict, verbose: bool = False):
     # First we need to get all the content and frontmatter into posts for later
     for post in get_markdown_files(posts_dir):
         source_path = os.path.join(posts_dir, post)
-        with open(source_path, 'r') as f:
-            file = f.read()
-            mark = parseCommonMark(file, _markdown_options(config), source=source_path)
+        mark = _read_document(config, source_path)
         post_data = mark['frontmatter']
         post_data['PostedDate'] = _parse_post_date(post_data['PostedDate'])
         post_template = strict_template if 'content_regions' in mark else template
@@ -165,6 +177,9 @@ def generate_blog_posts(config: dict, verbose: bool = False):
         posts[post] = post_data
         if post_data.get('Unlisted') is None:
             sorted_posts.append(post_data)
+            cache = config.get('_preview_cache')
+            if cache is not None:
+                cache.route(source_path, output_filename, config)
 
     sorted_posts.sort(key=lambda post: post['PostedDate'], reverse=config['descending'])
     blog_config = config['blogConfig']
@@ -332,9 +347,7 @@ def generate_pages(config: dict, verbose: bool = False):
 
     Returns the search records for every page.
     """
-    templateDir = config['templatesDir']
-    templateLoader = jinja2.FileSystemLoader(searchpath=templateDir)
-    templateEnv = jinja2.Environment( loader=templateLoader )
+    templateEnv = _template_environment(config)
     strictTemplateEnv = templateEnv.overlay(undefined=jinja2.StrictUndefined)
     template = templateEnv.get_template(config['pageConfig']['pageDefaultTemplate'])
     strict_template = strictTemplateEnv.get_template(config['pageConfig']['pageDefaultTemplate'])
@@ -346,9 +359,7 @@ def generate_pages(config: dict, verbose: bool = False):
     for page in get_markdown_files(pages_dir):
         pages[page] = {}
         source_path = os.path.join(pages_dir, page)
-        with open(source_path, 'r') as f:
-            file = f.read()
-            mark = parseCommonMark(file, _markdown_options(config), source=source_path)
+        mark = _read_document(config, source_path)
         page_template = strict_template if 'content_regions' in mark else template
         # If we override the template for that page, here it gets invoked
         if 'Template' in mark['frontmatter']:
@@ -365,6 +376,9 @@ def generate_pages(config: dict, verbose: bool = False):
         context['content'] = mark['markdown']
         if 'content_regions' in mark:
             context['content_regions'] = mark['content_regions']
+        cache = config.get('_preview_cache')
+        if cache is not None:
+            cache.route(source_path, output_filename, config)
         with open(output_filename, 'w+') as f:
             foo = _render_template(page_template, context, source_path)
             foo = config['_pattern'].sub(lambda m: config['_replacements'][m.group(0)], foo)
@@ -402,7 +416,7 @@ def generate_search(config: dict, records: list, verbose: bool = False):
     if not config.get('search'):
         return []
 
-    templateEnv = jinja2.Environment(loader=jinja2.FileSystemLoader(searchpath=config['templatesDir']))
+    templateEnv = _template_environment(config)
 
     def render_page(instance, context, assets):
         template = templateEnv.get_template(instance.template)
@@ -425,7 +439,9 @@ def generate_search(config: dict, records: list, verbose: bool = False):
                 f"search:{instance.name}",
             ))
 
-    return build_search_indexes(config, records, render_page=render_page, verbose=verbose)
+    cache = config.get('_preview_cache')
+    kwargs = {'index_builder': cache.index} if cache is not None else {}
+    return build_search_indexes(config, records, render_page=render_page, verbose=verbose, **kwargs)
 
 
 def build_pages_replacement_map(config: dict) -> dict:
@@ -449,9 +465,7 @@ def build_posts_replacement_map(config: dict) -> dict:
     replacements = {}
     for page in get_markdown_files(pages_dir):
         source_path = os.path.join(pages_dir, page)
-        with open(source_path, 'r') as f:
-            file = f.read()
-            mark = parseCommonMark(file, _markdown_options(config), source=source_path)
+        mark = _read_document(config, source_path)
         replacements[page] = config['blogConfig']['blogBaseDir'] + '/' + slugify(mark['frontmatter']['Title']) + config['defaultExtension']
     return replacements
 
@@ -476,7 +490,7 @@ def _publish_staged_output(staged_output: str, output_dir: str):
             shutil.rmtree(backup)
 
 
-def buildSite(config: dict, verbose: bool = False):
+def buildSite(config: dict, verbose: bool = False, *, preview_cache=None):
     output_dir = os.path.abspath(config['outputDir'])
     working_dir = os.path.abspath(os.getcwd())
     if output_dir in {os.path.abspath(os.sep), working_dir}:
@@ -494,6 +508,7 @@ def buildSite(config: dict, verbose: bool = False):
         dir=output_parent,
     )
     build_config = copy.deepcopy(config)
+    build_config['_preview_cache'] = preview_cache
     build_config['outputDir'] = staged_output
     build_config['_displayOutputDir'] = config['outputDir']
 
@@ -511,8 +526,12 @@ def buildSite(config: dict, verbose: bool = False):
         rep = dict((re.escape(k), v) for k, v in build_config['_replacements'].items())
         build_config['_pattern'] = re.compile("|".join(rep.keys()))
         generate_extras(build_config)
-        search_records = generate_pages(build_config, verbose=verbose)
-        search_records += generate_blog_posts(build_config, verbose=verbose)
+        search_records = []
+        for section, render in (("pages", generate_pages), ("blog_posts", generate_blog_posts)):
+            if preview_cache is None:
+                search_records.extend(render(build_config, verbose=verbose))
+            else:
+                search_records.extend(preview_cache.render_section(section, render, build_config, verbose))
         generate_search(build_config, search_records, verbose=verbose)
         os.chmod(staged_output, output_mode)
         _publish_staged_output(staged_output, output_dir)

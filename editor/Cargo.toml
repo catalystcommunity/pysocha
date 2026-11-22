@@ -10,11 +10,23 @@ gpui-webview = "=0.10.0"
 wry = { version = "0.53.3", package = "lb-wry" }
 serde_json = "1"
 base64 = "0.22"
+indexmap = "2"
+smol = "2"
 rfd = "0.15"
 tempfile = "3"
 
 [profile.dev]
 debug = 0
+
+# GPUI highlights short documents synchronously after each keystroke.
+[profile.dev.package.syntect]
+opt-level = 2
+
+[profile.dev.package.fancy-regex]
+opt-level = 2
+
+[profile.dev.package.regex-automata]
+opt-level = 2
 
 # Compile Metal shaders on the Mac when the application starts.
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -24,3 +36,11 @@ gpui-pre-macos = { version = "=0.3.12", features = ["runtime_shaders"] }
 # D3DCompile on the Windows machine. Keep the rest of the release optimized.
 [profile.release.package.gpui-pre-windows]
 debug-assertions = true
+
+[build-dependencies]
+embed-resource = "3"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+raw-window-handle = "0.6"
+x11rb = "0.13"

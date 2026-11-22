@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Pysocha Editor
+Exec=pysocha-editor %f
+Icon=com.catalystsquad.pysocha.editor
+StartupWMClass=com.catalystsquad.pysocha.editor
+Terminal=false
+Categories=Utility;TextEditor;

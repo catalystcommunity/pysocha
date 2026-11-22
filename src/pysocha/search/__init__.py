@@ -170,11 +170,19 @@ def _make_context(config: dict, instance: SearchInstance) -> SearchContext:
     )
 
 
+def build_index(context, records):
+    provider = resolve_provider(context.instance.provider)(context)
+    for record in records:
+        provider.add(record)
+    return provider.finalize()
+
+
 def build_search_indexes(
     config: dict,
     records: Iterable[SearchRecord],
     render_page=None,
     verbose: bool = False,
+    index_builder=build_index,
 ) -> List[Dict[str, Any]]:
     """Build every configured search index.
 
@@ -191,16 +199,9 @@ def build_search_indexes(
     for instance in instances:
         context = _make_context(config, instance)
         os.makedirs(context.instance_dir, exist_ok=True)
-        provider_class = resolve_provider(instance.provider)
-        provider = provider_class(context)
-
-        count = 0
-        for record in records:
-            if instance.accepts(record):
-                provider.add(record)
-                count += 1
-
-        assets = provider.finalize()
+        accepted = [record for record in records if instance.accepts(record)]
+        count = len(accepted)
+        assets = index_builder(context, accepted)
         if verbose:
             print(
                 f"search '{instance.name}' ({instance.provider}): "

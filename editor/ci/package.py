@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+ASSETS = Path(__file__).resolve().parents[1] / "assets"
+
 TARGETS = {
     "linux-x86_64": ("x86_64-unknown-linux-gnu", "linux-x86_64-gnu"),
     "linux-arm64": ("aarch64-unknown-linux-gnu", "linux-aarch64-gnu"),
@@ -20,23 +22,37 @@ def run(*args):
     subprocess.run(args, check=True)
 
 
+def stage_application(target, binary, tree, version):
+    """Lay out the native application and its desktop resources."""
+    windows = target.startswith("windows")
+    app = tree / "Pysocha Editor.app/Contents" if target == "macos-arm64" else None
+    folder = app / "MacOS" if app else tree / "pysocha-editor"
+    folder.mkdir(parents=True)
+    shutil.copy2(binary, folder / ("pysocha-editor.exe" if windows else "pysocha-editor"))
+    if app:
+        resources = app / "Resources"
+        resources.mkdir()
+        shutil.copy2(ASSETS / "pysocha.icns", resources)
+        (app / "Info.plist").write_bytes(plistlib.dumps(dict(
+            CFBundleName="Pysocha Editor", CFBundlePackageType="APPL",
+            CFBundleIdentifier="com.catalystsquad.pysocha.editor",
+            CFBundleIconFile="pysocha.icns",
+            CFBundleExecutable="pysocha-editor", CFBundleVersion=version,
+            CFBundleShortVersionString=version, NSHighResolutionCapable=True,
+        )))
+    elif not windows:
+        shutil.copy2(ASSETS / "pysocha.png", folder)
+        shutil.copy2(ASSETS / "com.catalystsquad.pysocha.editor.desktop", folder)
+    return folder
+
+
 def package(target, binary, output, version):
     platform, python_platform = TARGETS[target]
     windows = target.startswith("windows")
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
         tree = work / "archive"
-        app = tree / "Pysocha Editor.app/Contents" if target == "macos-arm64" else None
-        folder = app / "MacOS" if app else tree / "pysocha-editor"
-        folder.mkdir(parents=True)
-        shutil.copy2(binary, folder / ("pysocha-editor.exe" if windows else "pysocha-editor"))
-        if app:
-            (app / "Info.plist").write_bytes(plistlib.dumps(dict(
-                CFBundleName="Pysocha Editor", CFBundlePackageType="APPL",
-                CFBundleIdentifier="com.catalystsquad.pysocha.editor",
-                CFBundleExecutable="pysocha-editor", CFBundleVersion=version,
-                CFBundleShortVersionString=version, NSHighResolutionCapable=True,
-            )))
+        folder = stage_application(target, binary, tree, version)
         runtime = folder / "runtime"
         distribution = "cpython-3.12.12-" + python_platform
         run("uv", "python", "install", "--no-bin", "--install-dir", work / "python", distribution)

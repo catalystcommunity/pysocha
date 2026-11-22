@@ -45,6 +45,9 @@ def fake_binary(tmp_path, monkeypatch):
     ("os.kill(os.getpid(), signal.SIGILL)\n", "SIGILL"),
     ("sys.exit(17)\n", "exit code 17"),
     ("print('invalid protocol,', flush=True)\ntime.sleep(20)\n", "response reader failed"),
+    ("import base64\n"
+     "frame = base64.b64encode(b'{\"message_id\":1000,\"payload\":{}}')\n"
+     "print(frame.decode() + ',', flush=True)\ntime.sleep(20)\n", "response reader failed"),
     ("os.close(1)\nos.close(2)\ntime.sleep(20)\n", "response reader failed"),
 ])
 def test_crash_or_reader_failure_stops_build(tmp_path, fake_binary, body, message):
@@ -87,3 +90,20 @@ def test_timeout_kills_a_child_that_ignores_termination(tmp_path, fake_binary):
 def test_invalid_timeout_is_rejected(tmp_path, value):
     with pytest.raises(ValueError, match="indexTimeout"):
         run_build(tmp_path, timeout=value)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX child process")
+def test_protocol_error_is_matched_to_the_original_request(tmp_path, fake_binary):
+    fake_binary("""
+import base64, json
+frame = bytearray()
+while not frame.endswith(b','):
+    frame.extend(sys.stdin.buffer.read(1))
+original = base64.b64decode(frame[:-1]).decode()
+reply = {'payload': {'type': 'Error', 'message': 'invalid index configuration', 'original_message': original}}
+sys.stdout.buffer.write(base64.b64encode(json.dumps(reply).encode()) + b',')
+sys.stdout.buffer.flush()
+time.sleep(20)
+""")
+    with pytest.raises(Exception, match="invalid index configuration"):
+        run_build(tmp_path)
